@@ -1,9 +1,9 @@
 @echo off
-title AI bottrade - 24/7 Live Market Monitor
+title AI bottrade - Web Dashboard
 cd /d %~dp0
 
 echo ========================================================
-echo  AI bottrade - Starting 24/7 Live Market Monitor...
+echo  AI bottrade - Starting Web Dashboard...
 echo ========================================================
 
 if not exist ".venv\Scripts\activate.bat" (
@@ -15,5 +15,6 @@ if not exist ".venv\Scripts\activate.bat" (
 )
 
 call .venv\Scripts\activate.bat
-python main.py monitor
+echo Starting Streamlit on http://localhost:8501 ...
+python -m streamlit run app.py --server.port 8501 --server.address 0.0.0.0
 pause

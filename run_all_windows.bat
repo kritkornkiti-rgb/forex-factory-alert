@@ -2,28 +2,29 @@
 title AI bottrade - 24/7 Launcher
 cd /d %~dp0
 
+echo ========================================================
+echo  AI bottrade - Launching 24/7 Services on Windows VPS
+echo ========================================================
+
 if not exist ".venv\Scripts\activate.bat" (
     echo [ERROR] Virtual environment (.venv) not found!
-    echo Please run "setup_windows.bat" first.
+    echo Please double-click "setup_windows.bat" first.
     echo.
     pause
     exit /b 1
 )
 
-echo ========================================================
-echo  AI bottrade - Launching 24/7 Services on Windows VPS
-echo ========================================================
-echo 1. Launching 24/7 Multi-Timeframe Monitor (15m & 1h)...
-start "AI bottrade - 24/7 Live Monitor" cmd /k "call .venv\Scripts\activate.bat && python main.py monitor --assets "GOLD (XAU/USD)" "BTC/USDT" "SILVER (XAG/USD)" --timeframes 15m 1h --interval 60"
+echo [1/2] Starting 24/7 Live Market Monitor in separate window...
+start "AI bottrade - 24/7 Live Monitor" run_monitor_windows.bat
 
-echo 2. Launching Streamlit Web Dashboard (Port 8501)...
-start "AI bottrade - Web Dashboard" cmd /k "call .venv\Scripts\activate.bat && streamlit run app.py --server.port 8501 --server.address 0.0.0.0"
+echo [2/2] Starting Streamlit Web Dashboard in separate window...
+start "AI bottrade - Web Dashboard" run_dashboard_windows.bat
 
 echo.
 echo ========================================================
-echo  All services are running!
+echo  [SUCCESS] All services launched!
 echo  - Web Dashboard: http://localhost:8501
-echo  - Multi-Timeframe Scanning: 15m (Scalp) & 1h (Swing)
-echo  - You can minimize both command prompt windows.
+echo  - Live Monitor: Active in separate window
 echo ========================================================
-timeout /t 5
+echo You can minimize the windows or press Enter to close this launcher.
+pause
