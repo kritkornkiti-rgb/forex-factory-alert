@@ -1,6 +1,6 @@
 @echo off
 title AI bottrade - Environment Setup
-cd /d %~dp0
+cd /d "%~dp0"
 
 echo ========================================================
 echo  AI bottrade - Setting up Python Environment (Windows)
@@ -24,11 +24,6 @@ echo.
 echo [ERROR] Python is not recognized in command line!
 echo Windows cannot find "python" or "py".
 echo.
-echo Solution:
-echo 1. Re-run the Python installer.
-echo 2. Click "Modify" or "Reinstall".
-echo 3. Check the box "Add Python to PATH".
-echo.
 pause
 exit /b 1
 
@@ -50,7 +45,7 @@ if errorlevel 1 (
 :VENV_EXISTS
 echo.
 echo [2/3] Activating virtual environment...
-call .venv\Scripts\activate.bat
+call ".venv\Scripts\activate.bat"
 
 echo.
 echo [3/3] Installing dependencies from requirements.txt...
