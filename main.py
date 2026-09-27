@@ -234,8 +234,10 @@ def cmd_trade_setup(asset: str, timeframe: str, capital: float, risk: float):
     save_path = get_model_path(asset, timeframe)
     if not save_path.exists():
         print("Training model checkpoint first...")
+        df_train, train_cols = fe.prepare_features(df_raw, include_target=True)
         model = AITradingModel()
-        model.train(df_feat, cols)
+        model.train(df_train, train_cols)
+        model.save(save_path)
     else:
         model = AITradingModel.load(save_path)
 

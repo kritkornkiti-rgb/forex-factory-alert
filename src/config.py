@@ -80,7 +80,7 @@ SUPPORTED_ASSETS = {
 }
 
 # Supported Timeframes
-SUPPORTED_TIMEFRAMES = ["15m", "1h", "4h", "1d"]
+SUPPORTED_TIMEFRAMES = ["5m", "15m", "1h", "4h", "1d"]
 
 @dataclass
 class TradingConfig:

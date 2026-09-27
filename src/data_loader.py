@@ -92,7 +92,7 @@ class MarketDataLoader:
                 'timeout': 10000,
             })
             symbol = asset_info["symbol"]
-            tf_map = {"15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d"}
+            tf_map = {"5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d"}
             ccxt_tf = tf_map.get(timeframe, "1h")
 
             logger.info(f"Fetching {symbol} from Binance via CCXT ({ccxt_tf}, limit={limit})...")
@@ -114,6 +114,7 @@ class MarketDataLoader:
             import yfinance as yf
             # Map timeframe to yfinance interval and valid period
             yf_map = {
+                "5m": ("5m", "60d"),
                 "15m": ("15m", "50d"),
                 "1h": ("1h", "700d"),
                 "4h": ("1h", "700d"),  # Will resample to 4h
