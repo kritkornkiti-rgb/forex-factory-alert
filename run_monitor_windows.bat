@@ -3,7 +3,7 @@ title AI bottrade - 24/7 Live Market Monitor
 cd /d %~dp0
 
 if not exist ".venv\Scripts\activate.bat" (
-    echo [ERROR] Virtual environment not found! Please run 'setup_windows.bat' first.
+    echo [ERROR] Virtual environment not found! Please run "setup_windows.bat" first.
     pause
     exit /b 1
 )

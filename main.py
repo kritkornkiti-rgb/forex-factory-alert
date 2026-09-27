@@ -269,13 +269,13 @@ def cmd_trade_setup(asset: str, timeframe: str, capital: float, risk: float):
 from src.live_monitor import LiveMarketMonitor
 
 
-def cmd_monitor(assets: List[str], timeframe: str, interval: int, once: bool):
-    monitor = LiveMarketMonitor(assets=assets, timeframe=timeframe, check_interval_seconds=interval)
+def cmd_monitor(assets: List[str], timeframes: List[str], interval: int, once: bool):
+    monitor = LiveMarketMonitor(assets=assets, timeframes=timeframes, check_interval_seconds=interval)
     if once:
-        print(f"\n[AI bottrade] Running single-pass market scan for {assets} ({timeframe})...")
+        print(f"\n[AI bottrade] Running single-pass market scan for {assets} across ({', '.join(timeframes)})...")
         results = monitor.run_single_pass()
         for r in results:
-            print(f"[{r['asset']}] Price: ${r['price']:,.2f} | Signal: {r['signal']} | Confluence: {r['confluence_score']}")
+            print(f"[{r['asset']} ({r['timeframe']})] Price: ${r['price']:,.2f} | Signal: {r['signal']} | Confluence: {r['confluence_score']}")
     else:
         monitor.start_monitoring_loop()
 
@@ -297,7 +297,8 @@ def main():
     # monitor
     mon_parser = subparsers.add_parser("monitor", help="24/7 continuous market monitoring & instant alerts")
     mon_parser.add_argument("--assets", nargs="+", default=["GOLD (XAU/USD)", "BTC/USDT"], help="Assets to monitor")
-    mon_parser.add_argument("--timeframe", type=str, default="1h", choices=SUPPORTED_TIMEFRAMES)
+    mon_parser.add_argument("--timeframe", type=str, default=None, help="Single timeframe")
+    mon_parser.add_argument("--timeframes", nargs="+", default=None, help="Multiple timeframes e.g. 15m 1h")
     mon_parser.add_argument("--interval", type=int, default=60, help="Check interval in seconds")
     mon_parser.add_argument("--once", action="store_true", help="Run a single pass and exit")
 
@@ -336,7 +337,8 @@ def main():
     elif args.command == "setup":
         cmd_trade_setup(args.asset, args.timeframe, args.capital, args.risk)
     elif args.command == "monitor":
-        cmd_monitor(args.assets, args.timeframe, args.interval, args.once)
+        tfs = args.timeframes or ([args.timeframe] if args.timeframe else ["15m", "1h"])
+        cmd_monitor(args.assets, tfs, args.interval, args.once)
     elif args.command == "train":
         cmd_train(args.asset, args.timeframe, args.model_type)
     elif args.command == "continual-learn":
