@@ -4,11 +4,12 @@ Powered by Streamlit and Plotly.
 Supports Backtesting, AI Training, Real-time Paper Trading for Crypto & Precious Metals.
 """
 from datetime import datetime, timedelta
+import json
 from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from src.config import SUPPORTED_ASSETS, SUPPORTED_TIMEFRAMES, TradingConfig, MODELS_DIR
+from src.config import SUPPORTED_ASSETS, SUPPORTED_TIMEFRAMES, TradingConfig, MODELS_DIR, DATA_DIR
 from src.data_loader import MarketDataLoader
 from src.feature_engineering import FeatureEngineer
 from src.model import AITradingModel
@@ -570,29 +571,65 @@ def main():
                     st.json(test_res)
 
         st.markdown("---")
-        st.markdown("#### 🛰️ 24/7 Live Market Scanner (ระบบตรวจจับสัญญาณอัตโนมัติ)")
+        st.markdown("#### 🛰️ ตั้งค่าสินทรัพย์ & Timeframe ที่ให้บอทเฝ้ากราฟ 24/7")
 
-        selected_mon_assets = st.multiselect(
-            "เลือกสินทรัพย์ที่ต้องการให้บอทเฝ้าติดตาม:",
-            options=list(SUPPORTED_ASSETS.keys()),
-            default=["GOLD (XAU/USD)", "BTC/USDT", "ETH/USDT"]
-        )
+        mon_cfg_file = DATA_DIR / "monitor_config.json"
+        def_assets = ["GOLD (XAU/USD)", "BTC/USDT", "ETH/USDT"]
+        def_tfs = ["15m", "1h"]
+        if mon_cfg_file.exists():
+            try:
+                with open(mon_cfg_file, "r") as f:
+                    _c = json.load(f)
+                    def_assets = _c.get("assets", def_assets)
+                    def_tfs = _c.get("timeframes", def_tfs)
+            except Exception:
+                pass
 
-        col_scan_btn, col_scan_info = st.columns([1, 2])
-        with col_scan_btn:
-            run_scan = st.button("⚡ ตรวจจับสัญญาณตลาดสดเดี๋ยวนี้ (Scan Markets)", type="primary", use_container_width=True)
+        col_m_asset, col_m_tf = st.columns([3, 2])
+        with col_m_asset:
+            selected_mon_assets = st.multiselect(
+                "เลือกสินทรัพย์ที่ต้องการให้บอทเฝ้าติดตาม:",
+                options=list(SUPPORTED_ASSETS.keys()),
+                default=def_assets
+            )
+        with col_m_tf:
+            selected_mon_tfs = st.multiselect(
+                "เลือก Timeframe ที่ต้องการจับสัญญาณ:",
+                options=SUPPORTED_TIMEFRAMES,
+                default=def_tfs,
+                help="เลือกได้อิสระตามต้องการ เช่น 15m สำหรับ Scalp หรือ 1h/4h สำหรับ Swing"
+            )
 
-        if run_scan and selected_mon_assets:
+        col_m_save, col_m_scan = st.columns([1, 1])
+        with col_m_save:
+            if st.button("💾 บันทึกการตั้งค่าเฝ้าตลาด 24/7", type="primary", use_container_width=True):
+                if not selected_mon_tfs:
+                    st.error("กรุณาเลือกอย่างน้อย 1 Timeframe")
+                elif not selected_mon_assets:
+                    st.error("กรุณาเลือกอย่างน้อย 1 สินทรัพย์")
+                else:
+                    with open(mon_cfg_file, "w") as f:
+                        json.dump({
+                            "assets": selected_mon_assets,
+                            "timeframes": selected_mon_tfs,
+                            "interval": 60
+                        }, f, indent=2)
+                    st.success("บันทึกเรียบร้อย! ตัว Monitor 24/7 ใน Background จะอัปเดต Timeframe ใหม่ให้อัตโนมัติทันที")
+
+        with col_m_scan:
+            run_scan = st.button("⚡ ตรวจจับสัญญาณตลาดสดเดี๋ยวนี้ (Scan Markets)", use_container_width=True)
+
+        if run_scan and selected_mon_assets and selected_mon_tfs:
             with st.spinner("กำลังสแกนตลาดและวิเคราะห์สัญญาณสด..."):
-                monitor = LiveMarketMonitor(assets=selected_mon_assets, timeframe=selected_tf)
+                monitor = LiveMarketMonitor(assets=selected_mon_assets, timeframes=selected_mon_tfs)
                 scan_results = monitor.run_single_pass()
-                st.success(f"สแกนเสร็จสิ้นเรียบร้อย! ตรวจสอบ {len(scan_results)} สินทรัพย์")
+                st.success(f"สแกนเสร็จสิ้นเรียบร้อย! ตรวจสอบ {len(scan_results)} รายการ")
                 df_scan = pd.DataFrame(scan_results)
-                disp_scan_cols = ['asset', 'price', 'signal', 'confidence', 'confluence_score', 'alert_sent']
+                disp_scan_cols = ['asset', 'timeframe', 'price', 'signal', 'confidence', 'confluence_score', 'alert_sent']
                 avail_scan = [c for c in disp_scan_cols if c in df_scan.columns]
                 st.dataframe(df_scan[avail_scan], use_container_width=True)
 
-        st.caption("💡 **วิธีเปิดให้บอทเฝ้ากราฟ 24/7 ใน Background:** คุณสามารถสั่งรัน `.venv/bin/python main.py monitor` ใน Terminal หรือตั้งเป็น Service บน Cloud ได้เลยครับ")
+        st.caption("💡 **วิธีเปิดให้บอทเฝ้ากราฟ 24/7 ใน Background:** ตัวบอทจะอ่านการตั้งค่าด้านบนนี้ไปใช้อัตโนมัติ โดยไม่ต้องแก้ไขโค้ดใดๆ เพิ่มเติมครับ")
 
     # TAB 5: MARKET INDICATORS & RAW DATA
     with tab_data:

@@ -46,6 +46,10 @@ class LiveMarketMonitor:
         self.interval = check_interval_seconds
         self.enable_paper_trade = enable_paper_trade
 
+        self.config_file = DATA_DIR / "monitor_config.json"
+        if not timeframes and not timeframe:
+            self.load_config()
+
         self.data_loader = MarketDataLoader()
         self.feature_engineer = FeatureEngineer()
         self.notifier = AlertNotifier()
@@ -57,6 +61,22 @@ class LiveMarketMonitor:
         # Cooldown cache: (asset_tf) -> candle_time
         self.alerted_candles: Dict[str, str] = {}
         self.is_running = False
+
+    def load_config(self):
+        """Loads persistent monitor settings (assets, timeframes, interval) if available"""
+        if self.config_file.exists():
+            try:
+                with open(self.config_file, "r") as f:
+                    cfg = json.load(f)
+                    if "assets" in cfg and cfg["assets"]:
+                        self.assets = cfg["assets"]
+                    if "timeframes" in cfg and cfg["timeframes"]:
+                        self.timeframes = cfg["timeframes"]
+                    if "interval" in cfg:
+                        self.interval = cfg["interval"]
+                    self.timeframe = self.timeframes[0]
+            except Exception as e:
+                logger.warning(f"Failed to read monitor config: {e}")
 
     def check_asset(self, asset: str, tf: Optional[str] = None) -> Optional[dict]:
         """
@@ -204,6 +224,7 @@ class LiveMarketMonitor:
 
         try:
             while self.is_running:
+                self.load_config()
                 for asset in self.assets:
                     for tf in self.timeframes:
                         res = self.check_asset(asset, tf)
