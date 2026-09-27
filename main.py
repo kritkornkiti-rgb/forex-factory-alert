@@ -298,7 +298,7 @@ def main():
 
     # monitor
     mon_parser = subparsers.add_parser("monitor", help="24/7 continuous market monitoring & instant alerts")
-    mon_parser.add_argument("--assets", nargs="+", default=["GOLD (XAU/USD)", "BTC/USDT"], help="Assets to monitor")
+    mon_parser.add_argument("--assets", nargs="+", default=None, help="Assets to monitor (defaults to saved settings from web dashboard)")
     mon_parser.add_argument("--timeframe", type=str, default=None, help="Single timeframe")
     mon_parser.add_argument("--timeframes", nargs="+", default=None, help="Multiple timeframes e.g. 15m 1h")
     mon_parser.add_argument("--interval", type=int, default=60, help="Check interval in seconds")
@@ -339,7 +339,7 @@ def main():
     elif args.command == "setup":
         cmd_trade_setup(args.asset, args.timeframe, args.capital, args.risk)
     elif args.command == "monitor":
-        tfs = args.timeframes or ([args.timeframe] if args.timeframe else ["15m", "1h"])
+        tfs = args.timeframes or ([args.timeframe] if args.timeframe else None)
         cmd_monitor(args.assets, tfs, args.interval, args.once)
     elif args.command == "train":
         cmd_train(args.asset, args.timeframe, args.model_type)

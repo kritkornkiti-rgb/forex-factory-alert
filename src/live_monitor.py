@@ -47,8 +47,17 @@ class LiveMarketMonitor:
         self.enable_paper_trade = enable_paper_trade
 
         self.config_file = DATA_DIR / "monitor_config.json"
-        if not timeframes and not timeframe:
-            self.load_config()
+        self.load_config(initial=True)
+        if assets:
+            self.assets = assets
+        if timeframes:
+            self.timeframes = timeframes
+        elif timeframe:
+            if "," in timeframe:
+                self.timeframes = [t.strip() for t in timeframe.split(",")]
+            else:
+                self.timeframes = [timeframe]
+        self.timeframe = self.timeframes[0] if self.timeframes else "1h"
 
         self.data_loader = MarketDataLoader()
         self.feature_engineer = FeatureEngineer()
@@ -62,19 +71,28 @@ class LiveMarketMonitor:
         self.alerted_candles: Dict[str, str] = {}
         self.is_running = False
 
-    def load_config(self):
+    def load_config(self, initial: bool = False):
         """Loads persistent monitor settings (assets, timeframes, interval) if available"""
         if self.config_file.exists():
             try:
                 with open(self.config_file, "r") as f:
                     cfg = json.load(f)
-                    if "assets" in cfg and cfg["assets"]:
-                        self.assets = cfg["assets"]
-                    if "timeframes" in cfg and cfg["timeframes"]:
-                        self.timeframes = cfg["timeframes"]
-                    if "interval" in cfg:
-                        self.interval = cfg["interval"]
-                    self.timeframe = self.timeframes[0]
+                    new_assets = cfg.get("assets", getattr(self, "assets", ["GOLD (XAU/USD)", "BTC/USDT"]))
+                    new_tfs = cfg.get("timeframes", getattr(self, "timeframes", ["1h"]))
+                    new_interval = cfg.get("interval", getattr(self, "interval", 60))
+
+                    if not initial and hasattr(self, "assets") and hasattr(self, "timeframes"):
+                        if set(new_assets) != set(self.assets) or set(new_tfs) != set(self.timeframes):
+                            print(f"\n⚡ [Dashboard Update Detected] อัปเดตรายการเฝ้ากราฟจากหน้าเว็บทันที:")
+                            print(f"   📊 สินทรัพย์: {', '.join(new_assets)}")
+                            print(f"   ⏱️ Timeframes: {', '.join(new_tfs)}\n")
+                            logger.info(f"Monitor updated: {new_assets} | {new_tfs}")
+
+                    self.assets = new_assets
+                    self.timeframes = new_tfs
+                    self.interval = new_interval
+                    if self.timeframes:
+                        self.timeframe = self.timeframes[0]
             except Exception as e:
                 logger.warning(f"Failed to read monitor config: {e}")
 
