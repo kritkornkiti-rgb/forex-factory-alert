@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  ai-bottrade:
+    build: .
+    container_name: ai_bottrade_service
+    restart: always
+    ports:
+      - "8501:8501"
+    environment:
+      # Enter your alert credentials below or in a .env file
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+      - LINE_TOKEN=${LINE_TOKEN:-}
+    volumes:
+      # Persist trading logs, experiences, and trained AI models on host
+      - ./data:/app/data
+      - ./models_saved:/app/models_saved
+    command: ["all"]

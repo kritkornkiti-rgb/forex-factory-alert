@@ -1,0 +1,58 @@
+[
+  {
+    "timestamp": "2026-09-27T11:28:59.053113",
+    "asset": "GOLD (XAU/USD)",
+    "candle_time": "2026-09-25 16:00:00-04:00",
+    "price": 4321.2001953125,
+    "signal": "NEUTRAL (WAIT)",
+    "status": "WAITING",
+    "confidence": 0.9954,
+    "confluence_score": "0/6",
+    "alert_sent": false,
+    "paper_action": "NONE",
+    "paper_detail": "",
+    "setup": null
+  },
+  {
+    "timestamp": "2026-09-27T11:29:02.809625",
+    "asset": "BTC/USDT",
+    "candle_time": "2026-09-27 04:00:00",
+    "price": 84444.0,
+    "signal": "NEUTRAL (WAIT)",
+    "status": "WAITING",
+    "confidence": 0.9298,
+    "confluence_score": "0/6",
+    "alert_sent": false,
+    "paper_action": "NONE",
+    "paper_detail": "",
+    "setup": null
+  },
+  {
+    "timestamp": "2026-09-27T11:29:42.766175",
+    "asset": "GOLD (XAU/USD)",
+    "candle_time": "2026-09-25 16:00:00-04:00",
+    "price": 4321.2001953125,
+    "signal": "NEUTRAL (WAIT)",
+    "status": "WAITING",
+    "confidence": 0.9954,
+    "confluence_score": "0/6",
+    "alert_sent": false,
+    "paper_action": "NONE",
+    "paper_detail": "",
+    "setup": null
+  },
+  {
+    "timestamp": "2026-09-27T11:29:46.650765",
+    "asset": "BTC/USDT",
+    "candle_time": "2026-09-27 04:00:00",
+    "price": 84428.93,
+    "signal": "NEUTRAL (WAIT)",
+    "status": "WAITING",
+    "confidence": 0.9525,
+    "confluence_score": "0/6",
+    "alert_sent": false,
+    "paper_action": "NONE",
+    "paper_detail": "",
+    "setup": null
+  }
+]

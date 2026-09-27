@@ -1,0 +1,16 @@
+[Unit]
+Description=AI bottrade - 24/7 AI Trading Bot Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/AI-bottrade
+ExecStart=/root/AI-bottrade/.venv/bin/python main.py monitor --assets "GOLD (XAU/USD)" "BTC/USDT" "SILVER (XAG/USD)" --timeframe 1h --interval 60
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/ai-bottrade.log
+StandardError=append:/var/log/ai-bottrade-err.log
+
+[Install]
+WantedBy=multi-user.target

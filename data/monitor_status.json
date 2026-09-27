@@ -1,0 +1,9 @@
+{
+  "is_running": false,
+  "last_heartbeat": "2026-09-27T11:29:46.651528",
+  "monitored_assets": [
+    "GOLD (XAU/USD)",
+    "BTC/USDT"
+  ],
+  "timeframe": "1h"
+}

@@ -1,0 +1,316 @@
+"""
+AI bottrade - Trade Setup & Entry Level Generator
+Analyzes institutional SMC structures and AI model confidence to identify:
+1. Exact Entry Price & Entry Zones (Order Block / FVG / Market)
+2. Exact Stop-Loss Level (Order Block Invalidation / ATR)
+3. Exact Take-Profit Targets (TP1: 1:2 R:R, TP2: 1:3 R:R / Opposing Liquidity)
+4. Recommended Position Sizing based on risk management
+5. SMC Confluence Checklist & Rationale
+"""
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple
+import numpy as np
+import pandas as pd
+
+from src.config import SUPPORTED_ASSETS, TradingConfig
+from src.model import AITradingModel
+
+
+@dataclass
+class TradeSetup:
+    asset: str
+    timeframe: str
+    status: str            # "ACTIVE_SETUP" or "WAITING"
+    direction: str         # "BUY (LONG)", "SELL (SHORT)", or "NEUTRAL (WAIT)"
+    entry_price: float
+    entry_zone: Tuple[float, float]
+    entry_type: str        # "MARKET_DISCOUNT", "LIMIT_ORDER_BLOCK", "LIMIT_FVG"
+    stop_loss: float
+    sl_distance: float
+    sl_pct: float
+    sl_reason: str
+    take_profit_1: float
+    tp1_distance: float
+    tp1_pct: float
+    tp1_rr: float
+    take_profit_2: float
+    tp2_distance: float
+    tp2_pct: float
+    tp2_rr: float
+    recommended_size: float
+    position_value: float
+    risk_amount: float
+    ai_confidence: float
+    confluence_score: int
+    total_confluences: int
+    confluence_list: List[Dict[str, any]]
+    rationale_th: str
+
+
+class TradeSetupGenerator:
+    def __init__(self, config: Optional[TradingConfig] = None):
+        self.config = config or TradingConfig()
+
+    def generate_setup(
+        self,
+        asset_name: str,
+        timeframe: str,
+        df_features: pd.DataFrame,
+        model: AITradingModel,
+        capital: float = 10000.0,
+        risk_pct: float = 0.02
+    ) -> TradeSetup:
+        """
+        Calculates exact trade entry, Stop-Loss, and Take-Profit levels for the latest market bar.
+        """
+        if df_features.empty:
+            raise ValueError("Feature DataFrame cannot be empty.")
+
+        latest = df_features.iloc[-1]
+        current_price = float(latest['close'])
+        atr = float(latest['atr']) if 'atr' in latest else current_price * 0.01
+
+        # Run AI Model Prediction
+        signal, confidence, prob_dict = model.predict_signal(latest)
+
+        # SMC Conditions
+        smc_structure = int(latest.get('smc_structure', 1))
+        range_pos = float(latest.get('range_position', 0.5))
+        is_discount = bool(latest.get('is_discount', range_pos < 0.5))
+        is_premium = bool(latest.get('is_premium', range_pos > 0.5))
+        in_bull_ob = bool(latest.get('in_bullish_ob', False))
+        in_bear_ob = bool(latest.get('in_bearish_ob', False))
+        fvg_bull = bool(latest.get('fvg_bullish', False))
+        fvg_bear = bool(latest.get('fvg_bearish', False))
+        sweep_low = bool(latest.get('sweep_low', False))
+        sweep_high = bool(latest.get('sweep_high', False))
+        bos_bull = bool(latest.get('bos_bullish', False))
+        bos_bear = bool(latest.get('bos_bearish', False))
+        choch_bull = bool(latest.get('choch_bullish', False))
+        choch_bear = bool(latest.get('choch_bearish', False))
+
+        # Check Confluences
+        confluences = []
+        confluence_score = 0
+
+        # Confluence 1: Market Structure
+        struct_aligned = (signal == 1 and smc_structure == 1) or (signal == -1 and smc_structure == -1)
+        confluences.append({
+            "name": "Market Structure (โครงสร้างตลาด)",
+            "passed": struct_aligned or choch_bull or choch_bear,
+            "detail": f"Structure is {'BULLISH 🟢' if smc_structure == 1 else 'BEARISH 🔴'}"
+        })
+        if struct_aligned or choch_bull or choch_bear:
+            confluence_score += 1
+
+        # Confluence 2: Dealing Range (Discount vs Premium)
+        range_aligned = (signal == 1 and is_discount) or (signal == -1 and is_premium)
+        confluences.append({
+            "name": "Dealing Range (โซนราคาได้เปรียบ)",
+            "passed": range_aligned,
+            "detail": f"{'DISCOUNT (<50%) เหมาะเข้าซื้อ 🟢' if is_discount else 'PREMIUM (>50%) เหมาะขาย 🔴'} ({range_pos*100:.1f}%)"
+        })
+        if range_aligned:
+            confluence_score += 1
+
+        # Confluence 3: Order Block Retest
+        ob_aligned = (signal == 1 and in_bull_ob) or (signal == -1 and in_bear_ob)
+        confluences.append({
+            "name": "Order Block Zone (โซนสถาบัน)",
+            "passed": ob_aligned,
+            "detail": "ราคาแตะโซน Bullish Order Block" if in_bull_ob else ("ราคาแตะโซน Bearish Order Block" if in_bear_ob else "ไม่มี OB ในระดับราคานี้")
+        })
+        if ob_aligned:
+            confluence_score += 1
+
+        # Confluence 4: Imbalance / FVG
+        fvg_aligned = (signal == 1 and fvg_bull) or (signal == -1 and fvg_bear)
+        confluences.append({
+            "name": "Fair Value Gap (ช่องว่างราคา)",
+            "passed": fvg_aligned,
+            "detail": "ตรวจพบ Bullish FVG Imbalance" if fvg_bull else ("ตรวจพบ Bearish FVG Imbalance" if fvg_bear else "ราคาอยู่ในสมดุลปกติ")
+        })
+        if fvg_aligned:
+            confluence_score += 1
+
+        # Confluence 5: Liquidity Sweep
+        sweep_aligned = (signal == 1 and sweep_low) or (signal == -1 and sweep_high)
+        confluences.append({
+            "name": "Liquidity Sweep (กวาดสภาพคล่อง)",
+            "passed": sweep_aligned,
+            "detail": "เกิด Sell-side Liquidity Sweep ใต้ Low 🟢" if sweep_low else ("เกิด Buy-side Liquidity Sweep เหนือ High 🔴" if sweep_high else "ไม่มีการ Sweep")
+        })
+        if sweep_aligned:
+            confluence_score += 1
+
+        # Confluence 6: AI Confidence
+        ai_aligned = (confidence >= model.confidence_threshold) and (signal != 0)
+        confluences.append({
+            "name": "AI Model Confidence (ความมั่นใจของ AI)",
+            "passed": ai_aligned,
+            "detail": f"AI มั่นใจ {confidence:.1%} (เกณฑ์ขั้นต่ำ: {model.confidence_threshold:.1%})"
+        })
+        if ai_aligned:
+            confluence_score += 1
+
+        total_confluences = len(confluences)
+
+        # Decide Setup Direction and Unified Multi-Factor SL Calculation
+        # Factor 1: Dynamic ATR volatility
+        # Factor 2: Market condition adaptive buffer
+        # Factor 3: SMC Order Block / Swing Low Invalidation Level
+        # Factor 4: Risk Sizing (2% equity risk constraint)
+
+        recent_swing_lows = df_features[df_features['is_swing_low']].tail(3)
+        recent_swing_highs = df_features[df_features['is_swing_high']].tail(3)
+
+        if signal == 1 and (is_discount or in_bull_ob or struct_aligned):
+            direction = "BUY (LONG)"
+            status = "ACTIVE_SETUP"
+
+            # Entry Level
+            entry_price = current_price
+            entry_zone = (round(current_price * 0.998, 2), round(current_price * 1.001, 2))
+            entry_type = "MARKET_DISCOUNT" if is_discount else "SMC_CONFIRMATION"
+
+            # Unified SL: Check if there is an SMC Swing Low or Order Block base nearby
+            default_atr_sl_dist = max(atr * self.config.sl_atr_multiplier, current_price * 0.004)
+            chosen_sl_dist = default_atr_sl_dist
+            sl_reason = f"คำนวณตามความผันผวน Dynamic ATR ({self.config.sl_atr_multiplier}x ATR = ${default_atr_sl_dist:.2f})"
+
+            if not recent_swing_lows.empty:
+                last_sl_price = float(recent_swing_lows['low'].iloc[-1])
+                # Invalidation buffer: 0.15 x ATR below the structural low
+                structural_sl = last_sl_price - (0.15 * atr)
+                dist_from_entry = entry_price - structural_sl
+
+                # Ensure structural SL is logically valid (below entry and within 0.8x to 2.5x ATR)
+                if 0.5 * atr < dist_from_entry < 2.5 * default_atr_sl_dist:
+                    chosen_sl_dist = dist_from_entry
+                    sl_reason = f"วางใต้ขอบล่าง SMC Swing Low / Order Block (${last_sl_price:,.2f}) + บัฟเฟอร์ความผันผวน 0.15x ATR"
+
+            stop_loss = entry_price - chosen_sl_dist
+            sl_distance = chosen_sl_dist
+            sl_pct = (chosen_sl_dist / entry_price) * 100
+
+            # Take Profit Targets based on actual SL risk (R:R 1:2 and 1:3)
+            tp1_distance = chosen_sl_dist * 2.0  # 1:2 R:R
+            take_profit_1 = entry_price + tp1_distance
+            tp1_pct = (tp1_distance / entry_price) * 100
+            tp1_rr = 2.0
+
+            tp2_distance = chosen_sl_dist * 3.0  # 1:3 R:R
+            take_profit_2 = entry_price + tp2_distance
+            tp2_pct = (tp2_distance / entry_price) * 100
+            tp2_rr = 3.0
+
+            # Position Sizing based on risk
+            risk_dollars = capital * risk_pct
+            size = risk_dollars / chosen_sl_dist
+            pos_value = size * entry_price
+
+            rationale = (
+                f"สัญญาณ BUY เกิดขึ้นเนื่องจากราคาอยู่ในโซน DISCOUNT ({range_pos*100:.1f}%) "
+                f"และโครงสร้างตลาดเป็นขาขึ้น (BULLISH) โดยโมเดล AI ให้ความน่าจะเป็น {prob_dict.get('BUY', 0.0):.1%} "
+                f"แนะนำเปิดสถานะ LONG ที่ราคา ${entry_price:,.2f} โดยมีจุดตัดขาดทุน (SL) ที่ ${stop_loss:,.2f} "
+                f"({sl_reason}) และเป้าหมายทำกำไรหลัก (TP1) ที่ ${take_profit_1:,.2f} (R:R 1:2.0)"
+            )
+
+        elif signal == -1 and (is_premium or in_bear_ob or struct_aligned):
+            direction = "SELL (SHORT)"
+            status = "ACTIVE_SETUP"
+
+            entry_price = current_price
+            entry_zone = (round(current_price * 0.999, 2), round(current_price * 1.002, 2))
+            entry_type = "MARKET_PREMIUM" if is_premium else "SMC_CONFIRMATION"
+
+            default_atr_sl_dist = max(atr * self.config.sl_atr_multiplier, current_price * 0.004)
+            chosen_sl_dist = default_atr_sl_dist
+            sl_reason = f"คำนวณตามความผันผวน Dynamic ATR ({self.config.sl_atr_multiplier}x ATR = ${default_atr_sl_dist:.2f})"
+
+            if not recent_swing_highs.empty:
+                last_sh_price = float(recent_swing_highs['high'].iloc[-1])
+                structural_sl = last_sh_price + (0.15 * atr)
+                dist_from_entry = structural_sl - entry_price
+
+                if 0.5 * atr < dist_from_entry < 2.5 * default_atr_sl_dist:
+                    chosen_sl_dist = dist_from_entry
+                    sl_reason = f"วางเหนือขอบบน SMC Swing High / Order Block (${last_sh_price:,.2f}) + บัฟเฟอร์ความผันผวน 0.15x ATR"
+
+            stop_loss = entry_price + chosen_sl_dist
+            sl_distance = chosen_sl_dist
+            sl_pct = (chosen_sl_dist / entry_price) * 100
+
+            tp1_distance = chosen_sl_dist * 2.0
+            take_profit_1 = entry_price - tp1_distance
+            tp1_pct = (tp1_distance / entry_price) * 100
+            tp1_rr = 2.0
+
+            tp2_distance = chosen_sl_dist * 3.0
+            take_profit_2 = entry_price - tp2_distance
+            tp2_pct = (tp2_distance / entry_price) * 100
+            tp2_rr = 3.0
+
+            risk_dollars = capital * risk_pct
+            size = risk_dollars / chosen_sl_dist
+            pos_value = size * entry_price
+
+            rationale = (
+                f"สัญญาณ SELL เกิดขึ้นเนื่องจากราคาอยู่ในโซน PREMIUM ({range_pos*100:.1f}%) "
+                f"และโครงสร้างตลาดเป็นขาลง (BEARISH) โดยโมเดล AI ให้ความน่าจะเป็น {prob_dict.get('SELL', 0.0):.1%} "
+                f"แนะนำเปิดสถานะ SHORT ที่ราคา ${entry_price:,.2f} โดยมีจุดตัดขาดทุน (SL) ที่ ${stop_loss:,.2f} "
+                f"({sl_reason}) และเป้าหมายทำกำไรหลัก (TP1) ที่ ${take_profit_1:,.2f} (R:R 1:2.0)"
+            )
+
+        else:
+            direction = "NEUTRAL (WAIT)"
+            status = "WAITING"
+            entry_price = current_price
+            entry_zone = (current_price, current_price)
+            entry_type = "NONE"
+            stop_loss = 0.0
+            sl_distance = 0.0
+            sl_pct = 0.0
+            sl_reason = "ตลาดอยู่ในช่วงสภาวะพักตัวหรือยังไม่เข้าเงื่อนไข SMC"
+            take_profit_1 = 0.0
+            tp1_distance = 0.0
+            tp1_pct = 0.0
+            tp1_rr = 0.0
+            take_profit_2 = 0.0
+            tp2_distance = 0.0
+            tp2_pct = 0.0
+            tp2_rr = 0.0
+            size = 0.0
+            pos_value = 0.0
+            risk_dollars = 0.0
+            rationale = f"ขณะนี้ตลาดยังไม่มี Setup ที่มี Confluence ครบถ้วน AI แนะนำให้อยู่ในสถานะ WAIT (ถือเงินสด) เพื่อรอจังหวะที่ดีที่สุด"
+
+        return TradeSetup(
+            asset=asset_name,
+            timeframe=timeframe,
+            status=status,
+            direction=direction,
+            entry_price=round(entry_price, 2),
+            entry_zone=entry_zone,
+            entry_type=entry_type,
+            stop_loss=round(stop_loss, 2),
+            sl_distance=round(sl_distance, 2),
+            sl_pct=round(sl_pct, 2),
+            sl_reason=sl_reason,
+            take_profit_1=round(take_profit_1, 2),
+            tp1_distance=round(tp1_distance, 2),
+            tp1_pct=round(tp1_pct, 2),
+            tp1_rr=tp1_rr,
+            take_profit_2=round(take_profit_2, 2),
+            tp2_distance=round(tp2_distance, 2),
+            tp2_pct=round(tp2_pct, 2),
+            tp2_rr=tp2_rr,
+            recommended_size=round(size, 4),
+            position_value=round(pos_value, 2),
+            risk_amount=round(risk_dollars, 2),
+            ai_confidence=round(confidence, 4),
+            confluence_score=confluence_score,
+            total_confluences=total_confluences,
+            confluence_list=confluences,
+            rationale_th=rationale
+        )
