@@ -92,20 +92,21 @@ def main():
     asset_list = list(SUPPORTED_ASSETS.keys())
     # Group assets nicely
     metals = [a for a in asset_list if SUPPORTED_ASSETS[a]['category'] == 'metal']
+    forex = [a for a in asset_list if SUPPORTED_ASSETS[a]['category'] == 'forex']
     cryptos = [a for a in asset_list if SUPPORTED_ASSETS[a]['category'] == 'crypto']
 
     selected_asset = st.sidebar.selectbox(
         "📊 Select Asset",
-        options=metals + cryptos,
+        options=metals + forex + cryptos,
         index=0,
-        help="Select between Crypto pairs and Precious Metals"
+        help="เลือกสินทรัพย์: Precious Metals, Forex Pairs หรือ Crypto Pairs"
     )
 
     selected_tf = st.sidebar.selectbox(
         "⏱️ Timeframe",
         options=SUPPORTED_TIMEFRAMES,
         index=1,
-        help="Bar timeframe (15m, 1h, 4h, 1d)"
+        help="Bar timeframe (5m, 15m, 1h, 4h, 1d)"
     )
 
     asset_info = SUPPORTED_ASSETS[selected_asset]
