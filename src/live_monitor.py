@@ -211,49 +211,83 @@ class LiveMarketMonitor:
         try:
             with open(self.log_file, "w") as f:
                 json.dump(logs, f, indent=2)
-            with open(self.status_file, "w") as f:
-                json.dump({
-                    "is_running": self.is_running,
-                    "last_heartbeat": datetime.now().isoformat(),
-                    "monitored_assets": self.assets,
-                    "timeframes": self.timeframes
-                }, f, indent=2)
         except Exception as e:
             logger.warning(f"Failed to write monitor logs: {e}")
+
+    def _update_heartbeat(self, running: Optional[bool] = None):
+        """Updates monitor_status.json with current heartbeat timestamp and running state"""
+        is_run = self.is_running if running is None else running
+        try:
+            with open(self.status_file, "w") as f:
+                json.dump({
+                    "is_running": is_run,
+                    "last_heartbeat": datetime.now().isoformat(),
+                    "monitored_assets": self.assets,
+                    "timeframes": self.timeframes,
+                    "interval": self.interval
+                }, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed to write heartbeat status: {e}")
 
     def run_single_pass(self) -> List[dict]:
         """Runs one check across all monitored assets and timeframes"""
         results = []
         for asset in self.assets:
             for tf in self.timeframes:
-                res = self.check_asset(asset, tf)
-                if res:
-                    results.append(res)
+                try:
+                    res = self.check_asset(asset, tf)
+                    if res:
+                        results.append(res)
+                except Exception as e:
+                    logger.warning(f"Error checking {asset} ({tf}) in single pass: {e}")
         return results
 
     def start_monitoring_loop(self):
-        """Starts 24/7 continuous watcher loop"""
+        """Starts 24/7 continuous watcher loop with robust auto-recovery"""
         self.is_running = True
         logger.info(f"🚀 Starting 24/7 Market Monitor for {self.assets} across {self.timeframes} (every {self.interval}s)...")
         self.notifier.broadcast_text(
             "🟢 AI bottrade 24/7 Monitor Started",
             f"ระบบเริ่มติดตามกราฟ {', '.join(self.assets)} ({', '.join(self.timeframes)}) แบบอัตโนมัติแล้ว"
         )
+        self._update_heartbeat(running=True)
 
+        cycle_count = 0
         try:
             while self.is_running:
-                self.load_config()
-                for asset in self.assets:
-                    for tf in self.timeframes:
-                        res = self.check_asset(asset, tf)
-                        if res:
-                            t = res['timestamp'].split('T')[1][:8]
-                            p = res['price']
-                            sig = res['signal']
-                            conf = res['confidence']
-                            print(f"[{t}] {asset:<18} ({tf:<3}) | Price: ${p:,.2f} | Signal: {sig:<14} ({conf:.1%})")
+                try:
+                    self.load_config()
+                    self._update_heartbeat(running=True)
+
+                    for asset in self.assets:
+                        for tf in self.timeframes:
+                            try:
+                                res = self.check_asset(asset, tf)
+                                if res:
+                                    t = res['timestamp'].split('T')[1][:8]
+                                    p = res['price']
+                                    sig = res['signal']
+                                    conf = res['confidence']
+                                    score = res.get('confluence_score', '0/6')
+                                    print(f"[{t}] {asset:<18} ({tf:<3}) | Price: ${p:,.2f} | Signal: {sig:<14} ({conf:.1%}) | SMC: {score}")
+                            except Exception as asset_err:
+                                logger.warning(f"Error checking {asset} ({tf}): {asset_err}")
+
+                    cycle_count += 1
+                    # Heartbeat notification every 6 hours (e.g. 360 cycles at 60s)
+                    hb_cycles = int(6 * 3600 / max(self.interval, 10))
+                    if cycle_count > 0 and cycle_count % hb_cycles == 0:
+                        self.notifier.broadcast_text(
+                            "💓 AI bottrade Monitor Heartbeat",
+                            f"บอททำงานปกติ 24/7 | สแกนต่อเนื่อง {cycle_count} รอบ\nสินทรัพย์: {', '.join(self.assets)} ({', '.join(self.timeframes)})"
+                        )
+
+                except Exception as loop_err:
+                    logger.error(f"Unexpected error in monitor loop: {loop_err}", exc_info=True)
+
                 time.sleep(self.interval)
         except KeyboardInterrupt:
             self.is_running = False
+            self._update_heartbeat(running=False)
             logger.info("Monitor loop stopped by user.")
             self.notifier.broadcast_text("🛑 AI bottrade Monitor Stopped", "ระบบหยุดการติดตามกราฟแล้ว")

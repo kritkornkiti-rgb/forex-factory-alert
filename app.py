@@ -506,7 +506,52 @@ def main():
     # TAB 4: 24/7 ALERTS & NOTIFICATIONS
     with tab_alert:
         st.markdown("### 🔔 ระบบติดตามกราฟ 24/7 และแจ้งเตือนอัตโนมัติ (Live Alerts)")
-        st.write("ระบบสามารถรันเฝ้ากราฟในพื้นหลังตลอด 24 ชั่วโมง และส่งสัญญาณแจ้งเตือนเข้ามือถือผ่าน **Telegram**, **LINE**, **Discord** หรือบนหน้าจอ **macOS** ทันทีที่มีสัญญาณเข้าเทรด หรือเมื่อออเดอร์ชน Take-Profit / Stop-Loss!")
+        st.write("ระบบสามารถรันเฝ้ากราฟในพื้นหลังตลอด 24 ชั่วโมง และส่งสัญญาณแจ้งเตือนเข้ามือถือผ่าน **Telegram**, **LINE**, **Discord** ทันทีที่มีสัญญาณเข้าเทรด!")
+
+        # ----------------- 24/7 Monitor Live Health Status Banner -----------------
+        status_file = DATA_DIR / "monitor_status.json"
+        is_active = False
+        last_hb_str = "ไม่พบข้อมูล"
+        time_diff_text = "ไม่เคยรัน"
+        mon_assets_text = "-"
+        mon_tfs_text = "-"
+
+        if status_file.exists():
+            try:
+                with open(status_file, "r") as f:
+                    st_data = json.load(f)
+                    is_run = st_data.get("is_running", False)
+                    last_hb = st_data.get("last_heartbeat")
+                    mon_assets_text = ", ".join(st_data.get("monitored_assets", []))
+                    mon_tfs_text = ", ".join(st_data.get("timeframes", []))
+                    if last_hb:
+                        dt_hb = datetime.fromisoformat(last_hb)
+                        diff_sec = (datetime.now() - dt_hb).total_seconds()
+                        if diff_sec < 60:
+                            time_diff_text = f"{int(max(0, diff_sec))} วินาทีที่แล้ว"
+                        elif diff_sec < 3600:
+                            time_diff_text = f"{int(diff_sec // 60)} นาทีที่แล้ว"
+                        else:
+                            time_diff_text = f"{int(diff_sec // 3600)} ชั่วโมงที่แล้ว"
+
+                        if diff_sec < 180 and is_run:
+                            is_active = True
+                        last_hb_str = dt_hb.strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                pass
+
+        if is_active:
+            st.success(f"""
+            🟢 **สถานะ 24/7 Monitor: กำลังทำงานปกติ (ONLINE)**
+            * **สัญญาณชีพการสแกน (Heartbeat):** {time_diff_text} ({last_hb_str})
+            * **สินทรัพย์ที่กำลังเฝ้า:** `{mon_assets_text}` | **Timeframes:** `{mon_tfs_text}`
+            """)
+        else:
+            st.warning(f"""
+            🔴 **สถานะ 24/7 Monitor: บอทหยุดทำงานหรือยังไม่ได้เปิด (OFFLINE)**
+            * **สแกนครั้งล่าสุดเมื่อ:** {time_diff_text} ({last_hb_str})
+            * 💡 **วิธีเปิดให้บอทเริ่มทำงาน:** ไปที่หน้าต่าง VPS ดับเบิ้ลคลิกไฟล์ `run_monitor_windows.bat` (หรือ `run_all_windows.bat`) เพื่อให้หน้าต่างจอดำเริ่มเฝ้ากราฟ
+            """)
 
         notifier = AlertNotifier()
 
@@ -631,6 +676,27 @@ def main():
                 st.dataframe(df_scan[avail_scan], use_container_width=True)
 
         st.caption("💡 **วิธีเปิดให้บอทเฝ้ากราฟ 24/7 ใน Background:** ตัวบอทจะอ่านการตั้งค่าด้านบนนี้ไปใช้อัตโนมัติ โดยไม่ต้องแก้ไขโค้ดใดๆ เพิ่มเติมครับ")
+
+        # Live Activity Feed Table
+        st.markdown("---")
+        st.markdown("#### 📜 ประวัติการสแกนและสถานะตลาดล่าสุด (Live Activity Feed)")
+        act_file = DATA_DIR / "monitor_activity.json"
+        if act_file.exists():
+            try:
+                with open(act_file, "r") as f:
+                    act_list = json.load(f)
+                if act_list:
+                    df_act = pd.DataFrame(act_list)
+                    disp_act_cols = ['timestamp', 'asset', 'timeframe', 'price', 'signal', 'status', 'confluence_score', 'alert_sent']
+                    avail_act = [c for c in disp_act_cols if c in df_act.columns]
+                    st.dataframe(df_act[avail_act].iloc[::-1].head(15), use_container_width=True)
+                    st.caption("ℹ️ **ทำไม Telegram ถึงยังไม่แจ้งเตือน?** บอทจะยิงแจ้งเตือนเข้า Telegram เฉพาะเมื่อพบสัญญาณ `ACTIVE_SETUP` (Confluence ผ่านเกณฑ์ $\ge 3/6$) หากสถานะเป็น `WAITING` หรือสัญญาณเป็น `NEUTRAL (WAIT)` แปลว่าตลาดยังไม่มีจุดเข้าที่ได้เปรียบ บอทจะรอคอยจังหวะที่คมที่สุดครับ")
+                else:
+                    st.info("ยังไม่มีประวัติการสแกนล่าสุด")
+            except Exception:
+                st.info("กำลังโหลดประวัติการสแกน...")
+        else:
+            st.info("ยังไม่มีประวัติการสแกนล่าสุด (จะปรากฏขึ้นอัตโนมัติเมื่อบอทเริ่มสแกน)")
 
     # TAB 5: MARKET INDICATORS & RAW DATA
     with tab_data:
