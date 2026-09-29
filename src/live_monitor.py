@@ -288,7 +288,7 @@ class LiveMarketMonitor:
             paper_action = step_result.get("action_taken", "NONE")
             paper_detail = step_result.get("action_detail", "")
 
-            # Alert if position closed (SL or TP) or opened
+            # Alert when position closed (SL or TP)
             if "CLOSED" in paper_action:
                 closed_data = step_result.get("closed_trade_data")
                 if closed_data:
@@ -297,9 +297,7 @@ class LiveMarketMonitor:
                     title = f"📢 Position Closed: {asset} ({tf})"
                     self.notifier.broadcast_text(title, paper_detail)
             elif "OPEN" in paper_action:
-                opened_data = step_result.get("opened_trade_data")
-                if opened_data:
-                    self.notifier.broadcast_position_opened(opened_data, asset=asset, tf=tf)
+                logger.info(f"💼 [PaperTrader] Position successfully executed: {paper_detail}")
 
         report = {
             "timestamp": datetime.now().isoformat(),

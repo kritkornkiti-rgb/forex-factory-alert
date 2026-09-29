@@ -174,11 +174,13 @@ class AlertNotifier:
         )
         self.send_macos_notification(title, mac_msg)
 
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         telegram_msg = (
-            f"🚨 <b>AI bottrade SIGNAL ALERT</b> 🚨\n"
+            f"⚡ <b>AI bottrade: สัญญาณเปิดออเดอร์ (SIGNAL & ENTRY)</b> ⚡\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"📊 <b>สินทรัพย์:</b> {setup.asset} ({setup.timeframe})\n"
-            f"⚡ <b>สัญญาณ:</b> <b>{setup.direction}</b>\n"
+            f"⚡ <b>คำสั่ง:</b> <b>{setup.direction}</b>\n"
+            f"🕐 <b>เวลา:</b> <code>{now_str}</code>\n"
             f"{htf_line_tg}"
             f"{candle_line_tg}"
             f"🧠 <b>ความมั่นใจ AI:</b> {setup.ai_confidence:.1%}\n"
