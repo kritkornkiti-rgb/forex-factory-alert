@@ -155,10 +155,19 @@ class AlertNotifier:
         p_tp1 = format_currency_price(setup.asset, setup.take_profit_1)
         p_tp2 = format_currency_price(setup.asset, setup.take_profit_2)
 
+        htf_line_tg = ""
+        htf_line_dc = ""
+        htf_line_mac = ""
+        if setup.htf_timeframe and setup.htf_bias:
+            htf_icon = "🟢" if "BULL" in setup.htf_bias.upper() else ("🔴" if "BEAR" in setup.htf_bias.upper() else "⚪")
+            htf_line_tg = f"🔭 <b>HTF Trend ({setup.htf_timeframe}):</b> {setup.htf_bias} {htf_icon}\n"
+            htf_line_dc = f"🔭 **HTF Trend ({setup.htf_timeframe}):** {setup.htf_bias}\n"
+            htf_line_mac = f"HTF ({setup.htf_timeframe}): {setup.htf_bias} | "
+
         mac_msg = (
             f"Asset: {setup.asset} ({setup.timeframe})\n"
-            f"Entry: {p_entry} | SL: {p_sl}\n"
-            f"TP1: {p_tp1} (1:{setup.tp1_rr:.1f}) | Conf: {setup.ai_confidence:.1%}"
+            f"{htf_line_mac}Conf: {setup.ai_confidence:.1%} | SMC: {setup.confluence_score}/{setup.total_confluences}\n"
+            f"Entry: {p_entry} | SL: {p_sl} | TP1: {p_tp1}"
         )
         self.send_macos_notification(title, mac_msg)
 
@@ -167,8 +176,9 @@ class AlertNotifier:
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"📊 <b>สินทรัพย์:</b> {setup.asset} ({setup.timeframe})\n"
             f"⚡ <b>สัญญาณ:</b> <b>{setup.direction}</b>\n"
+            f"{htf_line_tg}"
             f"🧠 <b>ความมั่นใจ AI:</b> {setup.ai_confidence:.1%}\n"
-            f"🏛️ <b>SMC Confluence:</b> {setup.confluence_score}/{setup.total_confluences}\n"
+            f"🏛️ <b>SMC Confluence:</b> {setup.confluence_score}/{setup.total_confluences} (เกณฑ์ ≥4/6)\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"🎯 <b>ราคาเข้า (Entry):</b> <code>{p_entry}</code>\n"
             f"🛑 <b>Stop Loss (SL):</b> <code>{p_sl}</code> (-{setup.sl_pct:.2f}%)\n"
@@ -183,6 +193,8 @@ class AlertNotifier:
             f"🚨 **[AI bottrade SIGNAL ALERT]**\n"
             f"**Asset:** {setup.asset} ({setup.timeframe})\n"
             f"**Signal:** {setup.direction} (Confidence: {setup.ai_confidence:.1%})\n"
+            f"{htf_line_dc}"
+            f"**SMC Confluence:** {setup.confluence_score}/{setup.total_confluences} (เกณฑ์ ≥4/6)\n"
             f"🎯 **Entry:** {p_entry}\n"
             f"🛑 **SL:** {p_sl} (-{setup.sl_pct:.2f}%)\n"
             f"🏆 **TP1:** {p_tp1} (+{setup.tp1_pct:.2f}%)\n"

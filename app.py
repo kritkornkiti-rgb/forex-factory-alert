@@ -9,7 +9,10 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from src.config import SUPPORTED_ASSETS, SUPPORTED_TIMEFRAMES, TradingConfig, MODELS_DIR, DATA_DIR
+from src.config import (
+    SUPPORTED_ASSETS, SUPPORTED_TIMEFRAMES, TradingConfig, MODELS_DIR, DATA_DIR,
+    format_price, format_currency_price
+)
 from src.data_loader import MarketDataLoader
 from src.feature_engineering import FeatureEngineer
 from src.model import AITradingModel
@@ -278,7 +281,33 @@ def main():
             has_fvg = "Bullish FVG" if latest_bar.get('fvg_bullish', False) else ("Bearish FVG" if latest_bar.get('fvg_bearish', False) else "None")
             smc_c4.metric("Active Fair Value Gap", has_fvg)
 
-            # Generate Real-time Trade Setup (Entry, SL, TP1, TP2)
+            # Check Higher Timeframe (HTF) Alignment
+            htf_map = {"5m": "15m", "15m": "1h", "1h": "4h", "4h": "1d"}
+            htf_tf = htf_map.get(selected_tf)
+            htf_bias = None
+            if htf_tf:
+                try:
+                    df_htf_raw = data_loader.fetch_data(selected_asset, timeframe=htf_tf, limit=100)
+                    df_htf_feat, _ = feature_engineer.prepare_features(df_htf_raw, include_target=False)
+                    if not df_htf_feat.empty:
+                        l_htf = df_htf_feat.iloc[-1]
+                        s_struct = int(l_htf.get('smc_structure', 0))
+                        c_p = float(l_htf['close'])
+                        e50 = float(l_htf.get('ema_50', c_p))
+                        if s_struct == 1 and c_p >= e50:
+                            htf_bias = "BULLISH"
+                        elif s_struct == -1 and c_p <= e50:
+                            htf_bias = "BEARISH"
+                        elif s_struct == 1:
+                            htf_bias = "BULLISH"
+                        elif s_struct == -1:
+                            htf_bias = "BEARISH"
+                        else:
+                            htf_bias = "BULLISH" if c_p >= e50 else "BEARISH"
+                except Exception:
+                    htf_bias = None
+
+            # Generate Real-time Trade Setup (Entry, SL, TP1, TP2) with HTF & Confluence >= 4/6
             setup_gen = TradeSetupGenerator(config=trading_config)
             trade_setup = setup_gen.generate_setup(
                 selected_asset,
@@ -286,7 +315,10 @@ def main():
                 df_feat_bt,
                 model,
                 capital=initial_capital,
-                risk_pct=risk_pct
+                risk_pct=risk_pct,
+                htf_bias=htf_bias,
+                htf_timeframe=htf_tf,
+                min_confluence=4  # Requirement: Confluence >= 4/6
             )
 
             # Trade Setup Display Box
@@ -294,21 +326,31 @@ def main():
             st.markdown("### 🎯 Real-time AI Trade Setup Card (แผนตำแหน่งเข้าเทรดล่าสุด)")
 
             badge_color = "#00e676" if "BUY" in trade_setup.direction else ("#ff1744" if "SELL" in trade_setup.direction else "#ffb300")
-            st.markdown(f"**สัญญาณตลาด:** <span style='background-color:{badge_color}; color:#000; padding:4px 14px; border-radius:12px; font-weight:bold;'>{trade_setup.direction}</span> &nbsp;|&nbsp; AI Confidence: **{trade_setup.ai_confidence:.1%}** &nbsp;|&nbsp; Confluence Score: **{trade_setup.confluence_score}/{trade_setup.total_confluences}**", unsafe_allow_html=True)
+            htf_badge = ""
+            if trade_setup.htf_timeframe and trade_setup.htf_bias:
+                htf_color = "#00e676" if "BULL" in trade_setup.htf_bias.upper() else ("#ff1744" if "BEAR" in trade_setup.htf_bias.upper() else "#888")
+                htf_badge = f" &nbsp;|&nbsp; HTF ({trade_setup.htf_timeframe}): <span style='color:{htf_color}; font-weight:bold;'>{trade_setup.htf_bias}</span>"
+
+            st.markdown(f"**สัญญาณตลาด:** <span style='background-color:{badge_color}; color:#000; padding:4px 14px; border-radius:12px; font-weight:bold;'>{trade_setup.direction}</span> &nbsp;|&nbsp; AI Confidence: **{trade_setup.ai_confidence:.1%}** &nbsp;|&nbsp; Confluence: **{trade_setup.confluence_score}/{trade_setup.total_confluences}** (เกณฑ์ ≥4/6){htf_badge}", unsafe_allow_html=True)
 
             if trade_setup.status == "ACTIVE_SETUP":
+                p_entry_str = format_currency_price(selected_asset, trade_setup.entry_price)
+                p_sl_str = format_currency_price(selected_asset, trade_setup.stop_loss)
+                p_tp1_str = format_currency_price(selected_asset, trade_setup.take_profit_1)
+                p_tp2_str = format_currency_price(selected_asset, trade_setup.take_profit_2)
+
                 sc1, sc2, sc3, sc4 = st.columns(4)
-                sc1.metric("🎯 ENTRY PRICE", f"${trade_setup.entry_price:,.2f}", trade_setup.entry_type)
-                sc2.metric("🛑 STOP LOSS (SL)", f"${trade_setup.stop_loss:,.2f}", f"-${trade_setup.sl_distance:.2f} (-{trade_setup.sl_pct:.2f}%)")
-                sc3.metric("🏆 TAKE PROFIT 1 (1:2)", f"${trade_setup.take_profit_1:,.2f}", f"+${trade_setup.tp1_distance:.2f} (+{trade_setup.tp1_pct:.2f}%)")
-                sc4.metric("🚀 TAKE PROFIT 2 (1:3)", f"${trade_setup.take_profit_2:,.2f}", f"+${trade_setup.tp2_distance:.2f} (+{trade_setup.tp2_pct:.2f}%)")
+                sc1.metric("🎯 ENTRY PRICE", p_entry_str, trade_setup.entry_type)
+                sc2.metric("🛑 STOP LOSS (SL)", p_sl_str, f"-{trade_setup.sl_pct:.2f}%")
+                sc3.metric("🏆 TAKE PROFIT 1 (1:2)", p_tp1_str, f"+{trade_setup.tp1_pct:.2f}%")
+                sc4.metric("🚀 TAKE PROFIT 2 (1:3)", p_tp2_str, f"+{trade_setup.tp2_pct:.2f}%")
 
                 pos_c1, pos_c2, pos_c3 = st.columns(3)
                 pos_c1.info(f"💼 **ขนาดออเดอร์ที่แนะนำ:** `{trade_setup.recommended_size:.4f} Units` (มูลค่า: ${trade_setup.position_value:,.2f})")
                 pos_c2.info(f"🛡️ **ความเสี่ยงสูงสุด:** `${trade_setup.risk_amount:,.2f}` ({risk_pct*100:.1f}% ของพอร์ต ${initial_capital:,.2f})")
                 pos_c3.info(f"📌 **เหตุผล SL:** {trade_setup.sl_reason}")
             else:
-                st.warning("⚠️ **สภาวะปัจจุบัน:** ตลาดยังไม่มี Setup ที่มี Confluence สมบูรณ์ AI แนะนำให้อยู่ในสถานะ **WAIT (ถือเงินสด)** เพื่อรอจังหวะ Re-test โซนสถาบันที่ได้เปรียบ")
+                st.warning(f"⚠️ **สภาวะปัจจุบัน:** {trade_setup.rationale_th}")
 
             with st.expander("🔍 ตรวจสอบ SMC Confluence Checklist & บทวิเคราะห์ AI"):
                 for conf in trade_setup.confluence_list:
@@ -687,10 +729,10 @@ def main():
                     act_list = json.load(f)
                 if act_list:
                     df_act = pd.DataFrame(act_list)
-                    disp_act_cols = ['timestamp', 'asset', 'timeframe', 'price', 'signal', 'status', 'confluence_score', 'alert_sent']
+                    disp_act_cols = ['timestamp', 'asset', 'timeframe', 'htf', 'price', 'signal', 'status', 'confluence_score', 'alert_sent']
                     avail_act = [c for c in disp_act_cols if c in df_act.columns]
                     st.dataframe(df_act[avail_act].iloc[::-1].head(15), use_container_width=True)
-                    st.caption("ℹ️ **ทำไม Telegram ถึงยังไม่แจ้งเตือน?** บอทจะยิงแจ้งเตือนเข้า Telegram เฉพาะเมื่อพบสัญญาณ `ACTIVE_SETUP` (Confluence ผ่านเกณฑ์ $\ge 3/6$) หากสถานะเป็น `WAITING` หรือสัญญาณเป็น `NEUTRAL (WAIT)` แปลว่าตลาดยังไม่มีจุดเข้าที่ได้เปรียบ บอทจะรอคอยจังหวะที่คมที่สุดครับ")
+                    st.caption("ℹ️ **ทำไม Telegram ถึงยังไม่แจ้งเตือน?** บอทจะยิงแจ้งเตือนเข้า Telegram เฉพาะเมื่อพบสัญญาณ `ACTIVE_SETUP` (Confluence ผ่านเกณฑ์ ≥ 4/6 และสอดคล้องกับภาพใหญ่ HTF M15) พร้อมทั้งมีระบบ Directional Cooldown 30 นาที ป้องกันสัญญาณหลอกและการแจ้งเตือนซ้ำซ้อนครับ")
                 else:
                     st.info("ยังไม่มีประวัติการสแกนล่าสุด")
             except Exception:

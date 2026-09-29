@@ -16,6 +16,24 @@ from src.config import SUPPORTED_ASSETS, TradingConfig, format_price, format_cur
 from src.model import AITradingModel
 
 
+def get_asset_decimals(asset: str) -> int:
+    """Returns standard display decimal places for asset"""
+    asset_upper = asset.upper()
+    if "JPY" in asset_upper:
+        return 3
+    is_forex = False
+    if any(fx in asset_upper for fx in ["EUR", "GBP", "AUD", "CAD", "CHF", "NZD", "=X"]) or ("USD" in asset_upper and "/" in asset_upper):
+        if not any(m in asset_upper for m in ["GOLD", "SILVER", "PLATINUM", "XAU", "XAG", "XPT", "USDT"]):
+            is_forex = True
+    if is_forex:
+        return 5
+    if "XRP" in asset_upper:
+        return 4
+    if "SILVER" in asset_upper or "XAG" in asset_upper:
+        return 3
+    return 2
+
+
 @dataclass
 class TradeSetup:
     asset: str
@@ -45,6 +63,8 @@ class TradeSetup:
     total_confluences: int
     confluence_list: List[Dict[str, any]]
     rationale_th: str
+    htf_timeframe: Optional[str] = None
+    htf_bias: Optional[str] = None
 
 
 class TradeSetupGenerator:
@@ -58,10 +78,14 @@ class TradeSetupGenerator:
         df_features: pd.DataFrame,
         model: AITradingModel,
         capital: float = 10000.0,
-        risk_pct: float = 0.02
+        risk_pct: float = 0.02,
+        htf_bias: Optional[str] = None,         # "BULLISH", "BEARISH", or None
+        htf_timeframe: Optional[str] = None,    # e.g. "15m"
+        min_confluence: int = 4                 # User requirement: Confluence >= 4/6
     ) -> TradeSetup:
         """
         Calculates exact trade entry, Stop-Loss, and Take-Profit levels for the latest market bar.
+        Enforces HTF Trend Alignment, Minimum Confluence Score (>= 4/6), and Volatility-adaptive SL/TP.
         """
         if df_features.empty:
             raise ValueError("Feature DataFrame cannot be empty.")
@@ -155,20 +179,37 @@ class TradeSetupGenerator:
 
         total_confluences = len(confluences)
 
-        # Decide Setup Direction and Unified Multi-Factor SL Calculation
-        # Factor 1: Dynamic ATR volatility
-        # Factor 2: Market condition adaptive buffer
-        # Factor 3: SMC Order Block / Swing Low Invalidation Level
-        # Factor 4: Risk Sizing (2% equity risk constraint)
-
         recent_swing_lows = df_features[df_features['is_swing_low']].tail(3)
         recent_swing_highs = df_features[df_features['is_swing_high']].tail(3)
 
-        # Check if AI signal or strong SMC confluence triggers a setup
-        is_buy_setup = (signal == 1 and (is_discount or in_bull_ob or struct_aligned)) or \
-                       (prob_dict.get('BUY', 0.0) >= 0.40 and confluence_score >= 3 and (is_discount or in_bull_ob))
-        is_sell_setup = (signal == -1 and (is_premium or in_bear_ob or struct_aligned)) or \
-                        (prob_dict.get('SELL', 0.0) >= 0.40 and confluence_score >= 3 and (is_premium or in_bear_ob))
+        # Raw Candidate Setup
+        raw_buy = (signal == 1 or prob_dict.get('BUY', 0.0) >= 0.40) and (is_discount or in_bull_ob or struct_aligned)
+        raw_sell = (signal == -1 or prob_dict.get('SELL', 0.0) >= 0.40) and (is_premium or in_bear_ob or struct_aligned)
+
+        # Filter 1: Minimum Confluence Score (>= 4/6)
+        meets_confluence = (confluence_score >= min_confluence)
+
+        # Filter 2: Higher Timeframe (HTF) Alignment Filter
+        htf_filter_rejected = False
+        htf_rejection_reason = ""
+        htf_confirmed_str = ""
+
+        if htf_bias:
+            htf_bias_upper = htf_bias.upper()
+            tf_label = htf_timeframe or "HTF"
+            if raw_buy and "BEARISH" in htf_bias_upper:
+                htf_filter_rejected = True
+                htf_rejection_reason = f"สัญญาณ BUY ในกรอบ {timeframe} ถูกกรองออกเนื่องจากขัดแย้งกับแนวโน้ม HTF ({tf_label}) ที่เป็น BEARISH 🔴 (สถาบันเน้น Sell ตามภาพใหญ่)"
+            elif raw_sell and "BULLISH" in htf_bias_upper:
+                htf_filter_rejected = True
+                htf_rejection_reason = f"สัญญาณ SELL ในกรอบ {timeframe} ถูกกรองออกเนื่องจากขัดแย้งกับแนวโน้ม HTF ({tf_label}) ที่เป็น BULLISH 🟢 (สถาบันเน้น Buy ตามภาพใหญ่)"
+            elif raw_buy and "BULLISH" in htf_bias_upper:
+                htf_confirmed_str = f" [HTF {tf_label}: BULLISH 🟢 สอดคล้องภาพใหญ่]"
+            elif raw_sell and "BEARISH" in htf_bias_upper:
+                htf_confirmed_str = f" [HTF {tf_label}: BEARISH 🔴 สอดคล้องภาพใหญ่]"
+
+        is_buy_setup = raw_buy and meets_confluence and not htf_filter_rejected
+        is_sell_setup = raw_sell and meets_confluence and not htf_filter_rejected
 
         if is_buy_setup:
             direction = "BUY (LONG)"
@@ -176,13 +217,14 @@ class TradeSetupGenerator:
 
             # Entry Level
             entry_price = current_price
-            entry_zone = (round(current_price * 0.998, 2), round(current_price * 1.001, 2))
+            entry_zone = (round(current_price * 0.998, 5 if "forex" in SUPPORTED_ASSETS.get(asset_name, {}).get("category", "") else 2),
+                          round(current_price * 1.001, 5 if "forex" in SUPPORTED_ASSETS.get(asset_name, {}).get("category", "") else 2))
             entry_type = "MARKET_DISCOUNT" if is_discount else "SMC_CONFIRMATION"
 
             # Unified SL: Check if there is an SMC Swing Low or Order Block base nearby
             default_atr_sl_dist = max(atr * self.config.sl_atr_multiplier, current_price * 0.004)
             chosen_sl_dist = default_atr_sl_dist
-            sl_reason = f"คำนวณตามความผันผวน Dynamic ATR ({self.config.sl_atr_multiplier}x ATR = ${default_atr_sl_dist:.2f})"
+            sl_reason = f"คำนวณตามความผันผวน Dynamic ATR ({self.config.sl_atr_multiplier}x ATR = {format_currency_price(asset_name, default_atr_sl_dist)})"
 
             if not recent_swing_lows.empty:
                 last_sl_price = float(recent_swing_lows['low'].iloc[-1])
@@ -190,7 +232,7 @@ class TradeSetupGenerator:
                 structural_sl = last_sl_price - (0.15 * atr)
                 dist_from_entry = entry_price - structural_sl
 
-                # Ensure structural SL is logically valid (below entry and within 0.8x to 2.5x ATR)
+                # Ensure structural SL is logically valid (below entry and within 0.5x to 2.5x ATR)
                 if 0.5 * atr < dist_from_entry < 2.5 * default_atr_sl_dist:
                     chosen_sl_dist = dist_from_entry
                     sl_reason = f"วางใต้ขอบล่าง SMC Swing Low / Order Block ({format_currency_price(asset_name, last_sl_price)}) + บัฟเฟอร์ความผันผวน 0.15x ATR"
@@ -221,7 +263,8 @@ class TradeSetupGenerator:
 
             rationale = (
                 f"สัญญาณ BUY เกิดขึ้นเนื่องจากราคาอยู่ในโซน DISCOUNT ({range_pos*100:.1f}%) "
-                f"และโครงสร้างตลาดเป็นขาขึ้น (BULLISH) โดยโมเดล AI ให้ความน่าจะเป็น {prob_dict.get('BUY', 0.0):.1%} "
+                f"และโครงสร้างตลาดเป็นขาขึ้น (BULLISH) โดยโมเดล AI ให้ความน่าจะเป็น {prob_dict.get('BUY', 0.0):.1%}"
+                f"{htf_confirmed_str} "
                 f"แนะนำเปิดสถานะ LONG ที่ราคา {p_entry} โดยมีจุดตัดขาดทุน (SL) ที่ {p_sl} "
                 f"({sl_reason}) และเป้าหมายทำกำไรหลัก (TP1) ที่ {p_tp1} (R:R 1:2.0)"
             )
@@ -272,7 +315,8 @@ class TradeSetupGenerator:
 
             rationale = (
                 f"สัญญาณ SELL เกิดขึ้นเนื่องจากราคาอยู่ในโซน PREMIUM ({range_pos*100:.1f}%) "
-                f"และโครงสร้างตลาดเป็นขาลง (BEARISH) โดยโมเดล AI ให้ความน่าจะเป็น {prob_dict.get('SELL', 0.0):.1%} "
+                f"และโครงสร้างตลาดเป็นขาลง (BEARISH) โดยโมเดล AI ให้ความน่าจะเป็น {prob_dict.get('SELL', 0.0):.1%}"
+                f"{htf_confirmed_str} "
                 f"แนะนำเปิดสถานะ SHORT ที่ราคา {p_entry} โดยมีจุดตัดขาดทุน (SL) ที่ {p_sl} "
                 f"({sl_reason}) และเป้าหมายทำกำไรหลัก (TP1) ที่ {p_tp1} (R:R 1:2.0)"
             )
@@ -286,7 +330,6 @@ class TradeSetupGenerator:
             stop_loss = 0.0
             sl_distance = 0.0
             sl_pct = 0.0
-            sl_reason = "ตลาดอยู่ในช่วงสภาวะพักตัวหรือยังไม่เข้าเงื่อนไข SMC"
             take_profit_1 = 0.0
             tp1_distance = 0.0
             tp1_pct = 0.0
@@ -298,26 +341,40 @@ class TradeSetupGenerator:
             size = 0.0
             pos_value = 0.0
             risk_dollars = 0.0
-            rationale = f"ขณะนี้ตลาดยังไม่มี Setup ที่มี Confluence ครบถ้วน AI แนะนำให้อยู่ในสถานะ WAIT (ถือเงินสด) เพื่อรอจังหวะที่ดีที่สุด"
 
+            if htf_filter_rejected:
+                sl_reason = f"กรองออกโดย HTF Alignment ({htf_timeframe or 'HTF'})"
+                rationale = htf_rejection_reason
+            elif not meets_confluence and (raw_buy or raw_sell):
+                cand_dir = "BUY" if raw_buy else "SELL"
+                sl_reason = f"Confluence ไม่ผ่านเกณฑ์ ({confluence_score}/{total_confluences} < {min_confluence})"
+                rationale = (
+                    f"ตรวจพบสัญญาณ {cand_dir} แต่ Confluence ไม่ผ่านเกณฑ์ขั้นต่ำ ({confluence_score}/{total_confluences} ข้อ - ต้องการอย่างน้อย {min_confluence}/6) "
+                    f"ระบบกรองออกเพื่อลดสัญญาณหลอก (Noise) ในกรอบ {timeframe}"
+                )
+            else:
+                sl_reason = "ตลาดอยู่ในช่วงสภาวะพักตัวหรือยังไม่เข้าเงื่อนไข SMC"
+                rationale = f"ขณะนี้ตลาดยังไม่มี Setup ที่มี Confluence ครบถ้วน (เกณฑ์ ≥{min_confluence}/6) AI แนะนำให้อยู่ในสถานะ WAIT เพื่อรอจังหวะที่ดีที่สุด"
+
+        dec = get_asset_decimals(asset_name)
         return TradeSetup(
             asset=asset_name,
             timeframe=timeframe,
             status=status,
             direction=direction,
-            entry_price=round(entry_price, 2),
+            entry_price=round(entry_price, dec),
             entry_zone=entry_zone,
             entry_type=entry_type,
-            stop_loss=round(stop_loss, 2),
-            sl_distance=round(sl_distance, 2),
+            stop_loss=round(stop_loss, dec),
+            sl_distance=round(sl_distance, dec),
             sl_pct=round(sl_pct, 2),
             sl_reason=sl_reason,
-            take_profit_1=round(take_profit_1, 2),
-            tp1_distance=round(tp1_distance, 2),
+            take_profit_1=round(take_profit_1, dec),
+            tp1_distance=round(tp1_distance, dec),
             tp1_pct=round(tp1_pct, 2),
             tp1_rr=tp1_rr,
-            take_profit_2=round(take_profit_2, 2),
-            tp2_distance=round(tp2_distance, 2),
+            take_profit_2=round(take_profit_2, dec),
+            tp2_distance=round(tp2_distance, dec),
             tp2_pct=round(tp2_pct, 2),
             tp2_rr=tp2_rr,
             recommended_size=round(size, 4),
@@ -327,5 +384,7 @@ class TradeSetupGenerator:
             confluence_score=confluence_score,
             total_confluences=total_confluences,
             confluence_list=confluences,
-            rationale_th=rationale
+            rationale_th=rationale,
+            htf_timeframe=htf_timeframe,
+            htf_bias=htf_bias
         )

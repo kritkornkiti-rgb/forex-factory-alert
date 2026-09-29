@@ -8,7 +8,7 @@ import json
 import logging
 from pathlib import Path
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import pandas as pd
 
 from src.config import DATA_DIR, MODELS_DIR, SUPPORTED_ASSETS, TradingConfig, format_currency_price
@@ -20,6 +20,14 @@ from src.paper_trader import PaperTrader
 from src.trade_setup import TradeSetup, TradeSetupGenerator
 
 logger = logging.getLogger("AI-bottrade-monitor")
+
+
+HTF_TIMEFRAME_MAP = {
+    "5m": "15m",   # User requirement: M5 uses M15 as HTF
+    "15m": "1h",
+    "1h": "4h",
+    "4h": "1d",
+}
 
 
 class LiveMarketMonitor:
@@ -67,6 +75,11 @@ class LiveMarketMonitor:
         self.log_file = DATA_DIR / "monitor_activity.json"
         self.status_file = DATA_DIR / "monitor_status.json"
 
+        # Cooldown settings: 30-minute Directional Cooldown (User requirement 3)
+        self.cooldown_seconds: int = 1800
+        self.alert_history: Dict[str, dict] = {}  # cache_key -> {direction, timestamp, candle_time, price}
+        self.htf_cache: Dict[str, dict] = {}      # cache_key -> {timestamp, bias, structure, close, ema50}
+
         # Cooldown cache: (asset_tf) -> candle_time
         self.alerted_candles: Dict[str, str] = {}
         self.is_running = False
@@ -96,12 +109,62 @@ class LiveMarketMonitor:
             except Exception as e:
                 logger.warning(f"Failed to read monitor config: {e}")
 
+    def get_htf_bias(self, asset: str, tf: str) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Determines Higher Timeframe (HTF) market bias for the given asset and timeframe.
+        Specifically, for 5m it evaluates 15m structure and trend.
+        Returns: (bias, htf_timeframe) e.g. ("BULLISH", "15m") or ("BEARISH", "15m")
+        """
+        htf_tf = HTF_TIMEFRAME_MAP.get(tf)
+        if not htf_tf:
+            return None, None
+
+        cache_key = f"{asset}_{htf_tf}"
+        now = time.time()
+        cached = self.htf_cache.get(cache_key)
+        # Use cache if less than 120 seconds old
+        if cached and (now - cached["timestamp"] < 120):
+            return cached["bias"], htf_tf
+
+        try:
+            df_htf = self.data_loader.fetch_data(asset, timeframe=htf_tf, limit=100, force_download=False)
+            df_feat_htf, _ = self.feature_engineer.prepare_features(df_htf, include_target=False)
+            if not df_feat_htf.empty:
+                latest_htf = df_feat_htf.iloc[-1]
+                smc_struct = int(latest_htf.get('smc_structure', 0))
+                close = float(latest_htf['close'])
+                ema50 = float(latest_htf.get('ema_50', close))
+
+                if smc_struct == 1 and close >= ema50:
+                    bias = "BULLISH"
+                elif smc_struct == -1 and close <= ema50:
+                    bias = "BEARISH"
+                elif smc_struct == 1:
+                    bias = "BULLISH"
+                elif smc_struct == -1:
+                    bias = "BEARISH"
+                else:
+                    bias = "BULLISH" if close >= ema50 else "BEARISH"
+
+                self.htf_cache[cache_key] = {
+                    "timestamp": now,
+                    "bias": bias,
+                    "structure": smc_struct,
+                    "close": close,
+                    "ema50": ema50
+                }
+                return bias, htf_tf
+        except Exception as e:
+            logger.warning(f"Error checking HTF ({htf_tf}) for {asset}: {e}")
+
+        return None, None
+
     def check_asset(self, asset: str, tf: Optional[str] = None) -> Optional[dict]:
         """
         Executes one monitoring cycle for a given asset and timeframe:
         1. Fetches latest candle
-        2. Runs SMC & AI
-        3. Checks if new trade setup triggered (and broadcasts alert)
+        2. Evaluates HTF (M15 for M5) alignment and generates Trade Setup (min confluence >= 4/6)
+        3. Enforces 30-minute Directional Cooldown (blocks flip-flop and duplicate spam)
         4. In paper trading mode, executes step and alerts on SL/TP hits
         """
         tf = tf or self.timeframes[0]
@@ -136,24 +199,79 @@ class LiveMarketMonitor:
         candle_time = str(df_feat.index[-1])
         current_price = float(latest_candle['close'])
 
-        # 2. Generate Trade Setup
+        # 2. Get HTF Bias and Generate Trade Setup (Confluence >= 4/6)
+        htf_bias, htf_tf = self.get_htf_bias(asset, tf)
         setup = self.setup_gen.generate_setup(
             asset_name=asset,
             timeframe=tf,
             df_features=df_feat,
-            model=model
+            model=model,
+            htf_bias=htf_bias,
+            htf_timeframe=htf_tf,
+            min_confluence=4  # Requirement 2: Confluence >= 4/6
         )
 
         alert_sent = False
         cache_key = f"{asset}_{tf}"
-        # 3. Check for New Signal Alert
+        now_ts = time.time()
+        prev_alert = self.alert_history.get(cache_key)
+        cooldown_remaining = 0
+
+        # 3. Check for New Signal Alert with 30-min Directional Cooldown
         if setup.status == "ACTIVE_SETUP":
-            last_alerted = self.alerted_candles.get(cache_key)
-            if last_alerted != candle_time:
-                logger.info(f"🔥 NEW {setup.direction} SIGNAL TRIGGERED FOR {asset} ({tf})!")
+            if prev_alert:
+                elapsed = now_ts - prev_alert["timestamp"]
+                prev_dir = prev_alert["direction"]
+                rem_sec = int(self.cooldown_seconds - elapsed)
+
+                if elapsed < self.cooldown_seconds:
+                    cooldown_remaining = rem_sec
+                    # Check if flipping direction (e.g. BUY -> SELL or SELL -> BUY)
+                    is_flip = ("BUY" in prev_dir and "SELL" in setup.direction) or ("SELL" in prev_dir and "BUY" in setup.direction)
+                    if is_flip:
+                        logger.info(
+                            f"🚫 [Flip-Flop Prevented] {asset} ({tf}): สลับหน้าเล่นเป็น {setup.direction} "
+                            f"ถูกระงับ! อยู่ในระยะ Cooldown 30 นาที (เหลือ {rem_sec//60}m {rem_sec%60}s จากไม้เดิม {prev_dir})"
+                        )
+                        setup.status = "WAITING"
+                        setup.direction = "NEUTRAL (WAIT)"
+                        setup.rationale_th = (
+                            f"สัญญาณสลับหน้าเล่นเป็น {setup.direction} ถูกระงับโดยระบบ Directional Cooldown 30 นาที "
+                            f"(เตือน {prev_dir} ล่าสุดไปเมื่อ {int(elapsed//60)} นาทีก่อน, คงเหลือ cooldown อีก {rem_sec//60}m {rem_sec%60}s)"
+                        )
+                    else:
+                        # Same direction within cooldown -> suppress duplicate alert
+                        logger.info(
+                            f"⏳ [Cooldown Active] {asset} ({tf}): สัญญาณ {setup.direction} ยังอยู่ในระยะเวลา 30 นาที (เหลือ {rem_sec//60}m {rem_sec%60}s) -> ไม่ส่งเตือนซ้ำ"
+                        )
+                else:
+                    # Cooldown expired -> Broadcast fresh setup!
+                    logger.info(f"🔥 NEW {setup.direction} SIGNAL TRIGGERED FOR {asset} ({tf})! (Confluence: {setup.confluence_score}/6)")
+                    self.notifier.broadcast_trade_setup(setup)
+                    self.alert_history[cache_key] = {
+                        "direction": setup.direction,
+                        "timestamp": now_ts,
+                        "candle_time": candle_time,
+                        "price": current_price
+                    }
+                    self.alerted_candles[cache_key] = candle_time
+                    alert_sent = True
+            else:
+                # First alert for this asset & timeframe
+                logger.info(f"🔥 NEW {setup.direction} SIGNAL TRIGGERED FOR {asset} ({tf})! (Confluence: {setup.confluence_score}/6)")
                 self.notifier.broadcast_trade_setup(setup)
+                self.alert_history[cache_key] = {
+                    "direction": setup.direction,
+                    "timestamp": now_ts,
+                    "candle_time": candle_time,
+                    "price": current_price
+                }
                 self.alerted_candles[cache_key] = candle_time
                 alert_sent = True
+        elif prev_alert:
+            elapsed = now_ts - prev_alert["timestamp"]
+            if elapsed < self.cooldown_seconds:
+                cooldown_remaining = int(self.cooldown_seconds - elapsed)
 
         # 4. Optional: Run Paper Trading Step and check for SL/TP execution
         paper_action = "NONE"
@@ -173,12 +291,14 @@ class LiveMarketMonitor:
             "timestamp": datetime.now().isoformat(),
             "asset": asset,
             "timeframe": tf,
+            "htf": f"{htf_tf}:{htf_bias}" if htf_bias else "N/A",
             "candle_time": candle_time,
             "price": current_price,
             "signal": setup.direction,
             "status": setup.status,
             "confidence": setup.ai_confidence,
             "confluence_score": f"{setup.confluence_score}/{setup.total_confluences}",
+            "cooldown_remaining_sec": cooldown_remaining,
             "alert_sent": alert_sent,
             "paper_action": paper_action,
             "paper_detail": paper_detail,
@@ -269,8 +389,11 @@ class LiveMarketMonitor:
                                     sig = res['signal']
                                     conf = res['confidence']
                                     score = res.get('confluence_score', '0/6')
+                                    htf_s = res.get('htf', 'N/A')
+                                    cd_rem = res.get('cooldown_remaining_sec', 0)
+                                    cd_s = f"CD:{cd_rem//60}m" if cd_rem > 0 else "Ready"
                                     p_str = format_currency_price(asset, p)
-                                    print(f"[{t}] {asset:<18} ({tf:<3}) | Price: {p_str:<12} | Signal: {sig:<14} ({conf:.1%}) | SMC: {score}")
+                                    print(f"[{t}] {asset:<18} ({tf:<3}) | Price: {p_str:<12} | HTF: {htf_s:<14} | Signal: {sig:<14} ({conf:.1%}) | SMC: {score:<3} | {cd_s}")
                             except Exception as asset_err:
                                 logger.warning(f"Error checking {asset} ({tf}): {asset_err}")
 

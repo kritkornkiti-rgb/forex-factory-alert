@@ -483,5 +483,22 @@
       "tp2": 82831.66,
       "size": 0.5162
     }
+  },
+  {
+    "timestamp": "2026-09-29T17:14:40.427031",
+    "asset": "GOLD (XAU/USD)",
+    "timeframe": "5m",
+    "htf": "15m:BEARISH",
+    "candle_time": "2026-09-29 06:00:00-04:00",
+    "price": 4177.7001953125,
+    "signal": "NEUTRAL (WAIT)",
+    "status": "WAITING",
+    "confidence": 0.95,
+    "confluence_score": "3/6",
+    "cooldown_remaining_sec": 0,
+    "alert_sent": false,
+    "paper_action": "NONE",
+    "paper_detail": "",
+    "setup": null
   }
 ]
