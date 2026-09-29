@@ -164,7 +164,13 @@ class TradeSetupGenerator:
         recent_swing_lows = df_features[df_features['is_swing_low']].tail(3)
         recent_swing_highs = df_features[df_features['is_swing_high']].tail(3)
 
-        if signal == 1 and (is_discount or in_bull_ob or struct_aligned):
+        # Check if AI signal or strong SMC confluence triggers a setup
+        is_buy_setup = (signal == 1 and (is_discount or in_bull_ob or struct_aligned)) or \
+                       (prob_dict.get('BUY', 0.0) >= 0.40 and confluence_score >= 3 and (is_discount or in_bull_ob))
+        is_sell_setup = (signal == -1 and (is_premium or in_bear_ob or struct_aligned)) or \
+                        (prob_dict.get('SELL', 0.0) >= 0.40 and confluence_score >= 3 and (is_premium or in_bear_ob))
+
+        if is_buy_setup:
             direction = "BUY (LONG)"
             status = "ACTIVE_SETUP"
 
@@ -216,7 +222,7 @@ class TradeSetupGenerator:
                 f"({sl_reason}) และเป้าหมายทำกำไรหลัก (TP1) ที่ ${take_profit_1:,.2f} (R:R 1:2.0)"
             )
 
-        elif signal == -1 and (is_premium or in_bear_ob or struct_aligned):
+        elif is_sell_setup:
             direction = "SELL (SHORT)"
             status = "ACTIVE_SETUP"
 

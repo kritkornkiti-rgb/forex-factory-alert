@@ -2,7 +2,7 @@
 AI bottrade - Feature Engineering & Target Labeling
 Generates predictive features and forward-looking targets without lookahead bias.
 """
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
@@ -11,10 +11,11 @@ from src.smc import SMCEngine
 
 
 class FeatureEngineer:
-    def __init__(self, forward_bars: int = 4, target_threshold: float = 0.006):
+    def __init__(self, forward_bars: int = 4, target_threshold: Optional[float] = None):
         """
         :param forward_bars: Number of future bars to evaluate target performance
-        :param target_threshold: Minimum forward return to classify as BUY (1) or SELL (-1)
+        :param target_threshold: Minimum forward return to classify as BUY (1) or SELL (-1).
+                                 If None, automatically adapts dynamically using 0.75 * ATR / Close.
         """
         self.forward_bars = forward_bars
         self.target_threshold = target_threshold
@@ -78,13 +79,23 @@ class FeatureEngineer:
             future_return = data['close'].shift(-self.forward_bars) / data['close'] - 1.0
             data['future_return'] = future_return
 
+            if self.target_threshold is not None:
+                thresh = self.target_threshold
+            else:
+                # Dynamic volatility-adjusted threshold based on ATR
+                # 0.75 * ATR / Close creates natural multi-class balance across 5m, 15m, 1h, Forex, Metals, Crypto
+                if 'atr' in data.columns and 'close' in data.columns:
+                    thresh = (data['atr'] / data['close']) * 0.75
+                else:
+                    thresh = 0.002
+
             # Multi-class target:
             # 1  = BUY  (future return > +threshold)
             # -1 = SELL (future return < -threshold)
             # 0  = HOLD (ranging / neutral)
             conditions = [
-                future_return > self.target_threshold,
-                future_return < -self.target_threshold
+                future_return > thresh,
+                future_return < -thresh
             ]
             choices = [1, -1]
             data['target'] = np.select(conditions, choices, default=0)

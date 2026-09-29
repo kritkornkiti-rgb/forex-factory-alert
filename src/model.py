@@ -34,7 +34,7 @@ class AITradingModel:
     def __init__(
         self,
         model_type: str = "gradient_boosting", # "gradient_boosting" or "random_forest"
-        confidence_threshold: float = 0.52
+        confidence_threshold: float = 0.45
     ):
         self.model_type = model_type
         self.confidence_threshold = confidence_threshold
@@ -218,7 +218,7 @@ class AITradingModel:
         checkpoint = joblib.load(filepath)
         instance = cls(
             model_type=checkpoint.get('model_type', 'gradient_boosting'),
-            confidence_threshold=checkpoint.get('confidence_threshold', 0.52)
+            confidence_threshold=checkpoint.get('confidence_threshold', 0.45)
         )
         instance.model = checkpoint['model']
         instance.feature_names = checkpoint['feature_names']

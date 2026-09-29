@@ -150,4 +150,4 @@ class TradingConfig:
     sl_atr_multiplier: float = 1.5    # Stop-Loss: 1.5 x ATR
     tp_atr_multiplier: float = 2.5    # Take-Profit: 2.5 x ATR (Reward:Risk ~ 1.67:1)
     slippage: float = 0.0002          # 0.02% slippage estimation
-    confidence_threshold: float = 0.55 # Minimum AI probability to execute a trade
+    confidence_threshold: float = 0.45 # Minimum AI probability to execute a trade
