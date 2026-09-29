@@ -1,0 +1,10 @@
+{
+  "assets": [
+    "GBP/USD",
+    "USD/JPY"
+  ],
+  "timeframes": [
+    "5m",
+    "15m"
+  ]
+}

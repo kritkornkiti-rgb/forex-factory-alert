@@ -6,3 +6,7 @@ __pycache__/
 !data/*.sample.csv
 models_saved/*.joblib
 .env
+data/alert_config.json
+data/forex_monitor.log
+data/forex_notified_events.json
+data/forex_calendar_cache.json

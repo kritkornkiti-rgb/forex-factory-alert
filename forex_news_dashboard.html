@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ตารางแจ้งเตือนข่าวกล่องแดง Forex Factory</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sarabun:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: rgba(18, 24, 38, 0.85);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --red-folder: #ef4444;
+      --red-folder-bg: rgba(239, 68, 68, 0.15);
+      --red-border: rgba(239, 68, 68, 0.35);
+      --orange-folder: #f97316;
+      --orange-folder-bg: rgba(249, 115, 22, 0.15);
+      --accent-blue: #3b82f6;
+      --accent-glow: rgba(59, 130, 246, 0.25);
+      --green: #10b981;
+      --yellow: #eab308;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(239, 68, 68, 0.1) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(59, 130, 246, 0.1) 0px, transparent 50%);
+      color: var(--text-main);
+      font-family: 'Sarabun', 'Plus Jakarta Sans', sans-serif;
+      min-height: 100vh;
+      padding: 24px;
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 1300px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--card-border);
+      margin-bottom: 24px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-icon {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, #ef4444, #b91c1c);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+    }
+
+    .brand-title h1 {
+      font-size: 1.45rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-title p {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .clock-badge {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      padding: 8px 14px;
+      border-radius: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      background-color: #10b981;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #10b981;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: 1px solid var(--card-border);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-main);
+      user-select: none;
+    }
+
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      border-color: #ef4444;
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #f87171, #ef4444);
+      box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
+    }
+
+    .btn-active {
+      background: rgba(16, 185, 129, 0.2);
+      border-color: #10b981;
+      color: #34d399;
+    }
+
+    /* Metrics Summary Cards */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .metric-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 18px;
+      backdrop-filter: blur(12px);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .metric-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, var(--card-border), transparent);
+    }
+
+    .metric-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      margin-bottom: 10px;
+    }
+
+    .metric-val {
+      font-size: 1.8rem;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+      color: #fff;
+    }
+
+    .metric-sub {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      margin-top: 6px;
+    }
+
+    .highlight-card {
+      border-color: var(--red-border);
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(18, 24, 38, 0.9));
+    }
+
+    /* Filter Controls */
+    .controls-wrapper {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .filter-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .filter-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .pill {
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .pill:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .pill.active {
+      background: var(--accent-blue);
+      border-color: var(--accent-blue);
+      color: #fff;
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+
+    .pill-red.active {
+      background: #ef4444;
+      border-color: #ef4444;
+      box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+    }
+
+    .search-box {
+      position: relative;
+      min-width: 220px;
+    }
+
+    .search-box input {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 7px 12px 7px 32px;
+      font-size: 0.85rem;
+      color: #fff;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .search-box input:focus {
+      border-color: var(--accent-blue);
+    }
+
+    .search-box svg {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 14px;
+      height: 14px;
+      fill: var(--text-muted);
+    }
+
+    /* Table */
+    .table-container {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      overflow-x: auto;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    thead th {
+      background: rgba(255, 255, 255, 0.03);
+      padding: 14px 18px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border-bottom: 1px solid var(--card-border);
+      white-space: nowrap;
+    }
+
+    tbody td {
+      padding: 16px 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      font-size: 0.92rem;
+      vertical-align: middle;
+    }
+
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    tbody tr:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .row-imminent {
+      background: rgba(239, 68, 68, 0.08) !important;
+      animation: alertPulse 2s infinite ease-in-out;
+    }
+
+    @keyframes alertPulse {
+      0%, 100% { background-color: rgba(239, 68, 68, 0.06); }
+      50% { background-color: rgba(239, 68, 68, 0.16); }
+    }
+
+    .row-today {
+      border-left: 3px solid #38bdf8;
+    }
+
+    .currency-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 0.9rem;
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      white-space: nowrap;
+    }
+
+    .impact-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+
+    .impact-high {
+      background: var(--red-folder-bg);
+      color: #f87171;
+      border: 1px solid var(--red-border);
+    }
+
+    .impact-medium {
+      background: var(--orange-folder-bg);
+      color: #fb923c;
+      border: 1px solid rgba(249, 115, 22, 0.35);
+    }
+
+    .title-col {
+      font-weight: 600;
+      color: #fff;
+      max-width: 320px;
+    }
+
+    .num-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #cbd5e1;
+    }
+
+    .countdown-cell {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.88rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .cd-imminent {
+      color: #ef4444;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .cd-soon {
+      color: #f59e0b;
+    }
+
+    .cd-today {
+      color: #38bdf8;
+    }
+
+    .cd-past {
+      color: #64748b;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #1e293b;
+      color: #fff;
+      padding: 12px 20px;
+      border-radius: 10px;
+      border: 1px solid #334155;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 9999;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      pointer-events: none;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    /* Modal / Popups */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-muted);
+    }
+
+    .empty-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+      opacity: 0.6;
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: 16px;
+      }
+      .brand-title h1 {
+        font-size: 1.2rem;
+      }
+      .controls-wrapper {
+        padding: 12px;
+      }
+      thead th, tbody td {
+        padding: 10px 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Top Navigation & Title -->
+  <header>
+    <div class="brand">
+      <div class="brand-icon">🔴</div>
+      <div class="brand-title">
+        <h1>ตารางแจ้งเตือนข่าวกล่องแดง <span style="font-size:0.78rem; font-weight:600; padding:2px 8px; border-radius:6px; background:rgba(239,68,68,0.2); color:#fca5a5;">FOREX FACTORY</span></h1>
+        <p>ปฏิทินข่าวความผันผวนสูง (High Impact) | เวลาประเทศไทย (UTC+7)</p>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <div class="clock-badge">
+        <span class="live-dot"></span>
+        <span id="current-clock">--:--:--</span>
+      </div>
+      <button class="btn" id="btn-sound" onclick="toggleSound()">
+        <span id="sound-icon">🔊</span> เสียงเตือน: <span id="sound-status">เปิด</span>
+      </button>
+      <button class="btn" id="btn-notify-perm" onclick="requestNotificationPermission()">
+        🔔 เปิดแจ้งเตือนหน้าจอ
+      </button>
+      <button class="btn btn-primary" onclick="copyTodaySummary()">
+        📋 Copy สรุปข่าว
+      </button>
+      <button class="btn" onclick="fetchNewsData(true)">
+        🔄 รีเฟรช
+      </button>
+    </div>
+  </header>
+
+  <!-- Metric Summary Cards -->
+  <div class="metrics-grid">
+    <div class="metric-card">
+      <div class="metric-header">
+        <span>ข่าวกล่องแดงสัปดาห์นี้</span>
+        <span>🔴 HIGH</span>
+      </div>
+      <div class="metric-val" id="metric-week-count">--</div>
+      <div class="metric-sub" id="metric-week-sub">กำลังประมวลผลข้อมูล...</div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-header">
+        <span>ข่าวกล่องแดงวันนี้</span>
+        <span>📅 TODAY</span>
+      </div>
+      <div class="metric-val" id="metric-today-count">--</div>
+      <div class="metric-sub" id="metric-today-sub">--</div>
+    </div>
+
+    <div class="metric-card highlight-card">
+      <div class="metric-header">
+        <span style="color:#fca5a5; font-weight:600;">ข่าวถัดไปที่ต้องจับตา</span>
+        <span>⏳ NEXT EVENT</span>
+      </div>
+      <div class="metric-val" id="metric-next-countdown" style="font-size:1.4rem; color:#f87171;">--:--:--</div>
+      <div class="metric-sub" id="metric-next-title" style="color:#fecaca; font-weight:600;">--</div>
+    </div>
+  </div>
+
+  <!-- Filters & Controls -->
+  <div class="controls-wrapper">
+    <div class="filter-row">
+      <div class="filter-pills" id="time-filters">
+        <button class="pill active" onclick="setTimeFilter('all', this)">สัปดาห์นี้ทั้งหมด</button>
+        <button class="pill" onclick="setTimeFilter('today', this)">เฉพาะวันนี้ 📅</button>
+        <button class="pill" onclick="setTimeFilter('tomorrow', this)">วันพรุ่งนี้</button>
+        <button class="pill" onclick="setTimeFilter('upcoming', this)">เฉพาะที่ยังไม่ออก ⏳</button>
+      </div>
+
+      <div class="search-box">
+        <svg viewBox="0 0 24 24"><path d="M21.71 20.29l-5.4-5.4A7.9 7.9 0 0 0 18 10a8 8 0 1 0-8 8 7.9 7.9 0 0 0 4.89-1.69l5.4 5.4a1 1 0 0 0 1.42 0 1 1 0 0 0 0-1.42zM4 10a6 6 0 1 1 6 6 6 6 0 0 1-6-6z"/></svg>
+        <input type="text" id="search-input" placeholder="ค้นหาชื่อข่าว หรือ สกุลเงิน..." oninput="handleSearch(this.value)">
+      </div>
+    </div>
+
+    <div class="filter-row" style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 12px;">
+      <div class="filter-pills" id="currency-filters">
+        <button class="pill active" onclick="setCurrencyFilter('ALL', this)">ทั้งหมด</button>
+        <button class="pill" onclick="setCurrencyFilter('USD', this)">🇺🇸 USD</button>
+        <button class="pill" onclick="setCurrencyFilter('EUR', this)">🇪🇺 EUR</button>
+        <button class="pill" onclick="setCurrencyFilter('GBP', this)">🇬🇧 GBP</button>
+        <button class="pill" onclick="setCurrencyFilter('JPY', this)">🇯🇵 JPY</button>
+        <button class="pill" onclick="setCurrencyFilter('AUD', this)">🇦🇺 AUD</button>
+        <button class="pill" onclick="setCurrencyFilter('CAD', this)">🇨🇦 CAD</button>
+        <button class="pill" onclick="setCurrencyFilter('CHF', this)">🇨🇭 CHF</button>
+        <button class="pill" onclick="setCurrencyFilter('NZD', this)">🇳🇿 NZD</button>
+      </div>
+
+      <div class="filter-pills" id="impact-filters">
+        <button class="pill active" onclick="setImpactFilter('all_impact', this)">🔴 แดง & 🟠 ส้ม (ทั้งหมด)</button>
+        <button class="pill pill-red" onclick="setImpactFilter('high_only', this)">เฉพาะกล่องแดง 🔴</button>
+        <button class="pill" onclick="setImpactFilter('medium_only', this)">เฉพาะกล่องส้ม 🟠</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data Table -->
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>วัน/เวลา (ไทย UTC+7)</th>
+          <th>สกุลเงิน</th>
+          <th>ระดับ</th>
+          <th>ชื่อข่าวเศรษฐกิจ</th>
+          <th>คาดการณ์ (Forecast)</th>
+          <th>ก่อนหน้า (Previous)</th>
+          <th>นับถอยหลัง</th>
+          <th>สถานะ</th>
+        </tr>
+      </thead>
+      <tbody id="events-table-body">
+        <tr>
+          <td colspan="8" class="empty-state">
+            <div class="empty-icon">⏳</div>
+            <div>กำลังโหลดข้อมูลปฏิทินเศรษฐกิจจาก Forex Factory...</div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Toast Notification -->
+<div class="toast" id="toast">
+  <span id="toast-icon">✅</span>
+  <span id="toast-message">แจ้งเตือนสำเร็จ</span>
+</div>
+
+<script>
+  let allEvents = [];
+  let filterTime = 'all';
+  let filterCurrency = 'ALL';
+  let filterImpact = 'all_impact';
+  let searchQuery = '';
+  let soundEnabled = true;
+  let notifiedEventIds = new Set();
+  let audioContext = null;
+
+  // แผนที่ธงชาติ
+  const CURRENCY_FLAGS = {
+    'USD': '🇺🇸 USD',
+    'EUR': '🇪🇺 EUR',
+    'GBP': '🇬🇧 GBP',
+    'JPY': '🇯🇵 JPY',
+    'AUD': '🇦🇺 AUD',
+    'CAD': '🇨🇦 CAD',
+    'CHF': '🇨🇭 CHF',
+    'NZD': '🇳🇿 NZD',
+    'CNY': '🇨🇳 CNY'
+  };
+
+  // สร้างเสียงบี๊บแจ้งเตือนด้วย Web Audio API ไม่ต้องพึ่งพาไฟล์เสียงภายนอก
+  function playAlertBeep(urgent = false) {
+    if (!soundEnabled) return;
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!audioContext) audioContext = new AudioCtx();
+      if (audioContext.state === 'suspended') audioContext.resume();
+
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      osc.connect(gain);
+      gain.connect(audioContext.destination);
+
+      if (urgent) {
+        osc.frequency.setValueAtTime(880, audioContext.currentTime); // A5
+        osc.frequency.setValueAtTime(1174.66, audioContext.currentTime + 0.15); // D6
+        gain.gain.setValueAtTime(0.4, audioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
+        osc.start();
+        osc.stop(audioContext.currentTime + 0.4);
+      } else {
+        osc.frequency.setValueAtTime(587.33, audioContext.currentTime); // D5
+        gain.gain.setValueAtTime(0.2, audioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.25);
+        osc.start();
+        osc.stop(audioContext.currentTime + 0.25);
+      }
+    } catch(e) {
+      console.warn("Audio Context Error:", e);
+    }
+  }
+
+  function toggleSound() {
+    soundEnabled = !soundEnabled;
+    document.getElementById('sound-icon').textContent = soundEnabled ? '🔊' : '🔇';
+    document.getElementById('sound-status').textContent = soundEnabled ? 'เปิด' : 'ปิด';
+    const btn = document.getElementById('btn-sound');
+    if (soundEnabled) {
+      btn.classList.add('btn-active');
+      playAlertBeep(false);
+      showToast('🔊 เปิดเสียงเตือนเรียบร้อย');
+    } else {
+      btn.classList.remove('btn-active');
+      showToast('🔇 ปิดเสียงเตือนแล้ว');
+    }
+  }
+
+  function requestNotificationPermission() {
+    if (!('Notification' in window)) {
+      alert('เบราว์เซอร์นี้ไม่รองรับการแจ้งเตือนแบบ Desktop');
+      return;
+    }
+    Notification.requestPermission().then(permission => {
+      if (permission === 'granted') {
+        new Notification('🔴 แจ้งเตือน Forex Factory', {
+          body: 'เปิดระบบแจ้งเตือนข่าวกล่องแดงบนหน้าจอเรียบร้อยแล้ว!',
+          icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="%23ef4444"/></svg>'
+        });
+        document.getElementById('btn-notify-perm').classList.add('btn-active');
+        showToast('🔔 อนุญาตการแจ้งเตือนหน้าจอสำเร็จ');
+      } else {
+        showToast('⚠️ คุณไม่ได้อนุญาตการแจ้งเตือน');
+      }
+    });
+  }
+
+  function showToast(msg, icon = '✅') {
+    const toast = document.getElementById('toast');
+    document.getElementById('toast-message').textContent = msg;
+    document.getElementById('toast-icon').textContent = icon;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3000);
+  }
+
+  // นาฬิกาแสดงเวลาปัจจุบัน
+  function updateLiveClock() {
+    const now = new Date();
+    // แปลงเวลาให้เป็นไทย (UTC+7)
+    const options = {
+      timeZone: 'Asia/Bangkok',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false
+    };
+    document.getElementById('current-clock').textContent = now.toLocaleTimeString('th-TH', options) + ' TH';
+  }
+  setInterval(updateLiveClock, 1000);
+  updateLiveClock();
+
+  // ดึงข้อมูลจาก Backend API
+  async function fetchNewsData(force = false) {
+    try {
+      showToast('🔄 กำลังโหลดข้อมูลล่าสุด...', '⏳');
+      const baseApi = window.location.protocol === 'file:' ? 'http://localhost:5050' : '';
+      const url = force ? `${baseApi}/api/news?force=1` : `${baseApi}/api/news`;
+      if (force) {
+        await fetch(`${baseApi}/api/refresh`, { method: 'POST' }).catch(() => {});
+      }
+
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (data.status === 'success' && data.events) {
+        allEvents = data.events;
+        updateMetrics();
+        renderTable();
+        showToast(`✅ อัปเดตข้อมูลสำเร็จ (${allEvents.length} ข่าว)`);
+      } else {
+        throw new Error(data.message || 'ไม่สามารถโหลดข้อมูลได้');
+      }
+    } catch(err) {
+      console.warn('API fetch failed, trying local fallback...', err);
+      showToast('⚠️ ใช้ข้อมูลสำรองในเครื่อง', '⚠️');
+    }
+  }
+
+  function updateMetrics() {
+    const now = Date.now();
+    const highEvents = allEvents.filter(e => e.impact === 'High');
+    document.getElementById('metric-week-count').textContent = highEvents.length + ' ข่าว';
+
+    const todayEvents = highEvents.filter(e => e.is_today);
+    document.getElementById('metric-today-count').textContent = todayEvents.length + ' ข่าว';
+    document.getElementById('metric-today-sub').textContent = todayEvents.length > 0 
+      ? `มี ${todayEvents.filter(e => e.diff_minutes > 0).length} ข่าวที่ยังรอประกาศ`
+      : 'วันนี้ไม่มีข่าวกล่องแดง';
+
+    // ค้นหาข่าวกล่องแดงถัดไปที่กำลังจะมาถึง
+    const upcoming = highEvents
+      .filter(e => e.diff_minutes > -5)
+      .sort((a, b) => a.timestamp_ms - b.timestamp_ms);
+
+    if (upcoming.length > 0) {
+      const nextEv = upcoming[0];
+      document.getElementById('metric-next-title').textContent = `${nextEv.currency_label} • ${nextEv.title}`;
+      updateNextTimer(nextEv.timestamp_ms);
+    } else {
+      document.getElementById('metric-next-countdown').textContent = 'สิ้นสุดแล้ว';
+      document.getElementById('metric-next-title').textContent = 'ไม่มีข่าวกล่องแดงในสัปดาห์นี้';
+    }
+  }
+
+  function updateNextTimer(targetMs) {
+    const diff = targetMs - Date.now();
+    if (diff <= 0) {
+      document.getElementById('metric-next-countdown').textContent = '🚨 ถึงเวลาแล้ว!';
+      return;
+    }
+    const totalSec = Math.floor(diff / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    document.getElementById('metric-next-countdown').textContent = 
+      `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+
+  // ฟิลเตอร์ต่างๆ
+  function setTimeFilter(val, el) {
+    filterTime = val;
+    document.querySelectorAll('#time-filters .pill').forEach(p => p.classList.remove('active'));
+    el.classList.add('active');
+    renderTable();
+  }
+
+  function setCurrencyFilter(val, el) {
+    filterCurrency = val;
+    document.querySelectorAll('#currency-filters .pill').forEach(p => p.classList.remove('active'));
+    el.classList.add('active');
+    renderTable();
+  }
+
+  function setImpactFilter(val, el) {
+    filterImpact = val;
+    document.querySelectorAll('#impact-filters .pill').forEach(p => p.classList.remove('active'));
+    el.classList.add('active');
+    renderTable();
+  }
+
+  function handleSearch(val) {
+    searchQuery = val.trim().toLowerCase();
+    renderTable();
+  }
+
+  // เรนเดอร์ตาราง
+  function renderTable() {
+    const tbody = document.getElementById('events-table-body');
+    const nowMs = Date.now();
+    const todayDate = new Date().toDateString();
+
+    const filtered = allEvents.filter(ev => {
+      // 1. Impact
+      if (filterImpact === 'high_only' && ev.impact !== 'High') return false;
+      if (filterImpact === 'medium_only' && ev.impact !== 'Medium') return false;
+
+      // 2. Currency
+      if (filterCurrency !== 'ALL' && ev.country !== filterCurrency) return false;
+
+      // 3. Time Filter
+      const evDate = new Date(ev.timestamp_ms);
+      if (filterTime === 'today' && !ev.is_today) return false;
+      if (filterTime === 'tomorrow') {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        if (evDate.toDateString() !== tomorrow.toDateString()) return false;
+      }
+      if (filterTime === 'upcoming' && ev.timestamp_ms < nowMs - (5 * 60 * 1000)) return false;
+
+      // 4. Search Query
+      if (searchQuery) {
+        const fullStr = `${ev.country} ${ev.title} ${ev.date_bkk_str}`.toLowerCase();
+        if (!fullStr.includes(searchQuery)) return false;
+      }
+
+      return true;
+    });
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="8" class="empty-state">
+            <div class="empty-icon">🔍</div>
+            <div>ไม่พบข่าวที่ตรงกับเงื่อนไขการค้นหา</div>
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    let rowsHtml = '';
+    filtered.forEach(ev => {
+      const diffMs = ev.timestamp_ms - nowMs;
+      const diffMin = Math.floor(diffMs / 60000);
+
+      let cdClass = 'cd-upcoming';
+      let cdText = '';
+      let rowClass = '';
+      let statusBadge = '';
+
+      if (diffMin < -10) {
+        cdClass = 'cd-past';
+        const pastM = Math.abs(diffMin);
+        cdText = pastM < 60 ? `ผ่านไป ${pastM} น.` : `ผ่านไป ${Math.floor(pastM / 60)} ชม.`;
+        statusBadge = `<span style="color:#64748b;">✅ จบแล้ว</span>`;
+      } else if (diffMin <= 15 && diffMin >= -2) {
+        cdClass = 'cd-imminent';
+        rowClass = 'row-imminent';
+        cdText = diffMin <= 0 ? '🔴 ออกแล้ว!' : `🚨 อีก ${diffMin} น.`;
+        statusBadge = `<span style="color:#ef4444; font-weight:700;">⚠️ เตือนด่วน!</span>`;
+
+        // ตรวจสอบส่งการแจ้งเตือนเสียงและ Desktop
+        checkAndTriggerAlert(ev, diffMin);
+      } else if (diffMin <= 60) {
+        cdClass = 'cd-soon';
+        cdText = `⚠️ อีก ${diffMin} นาที`;
+        statusBadge = `<span style="color:#f59e0b;">⏳ ใกล้ถึงเวลา</span>`;
+      } else {
+        const h = Math.floor(diffMin / 60);
+        const m = diffMin % 60;
+        if (diffMin <= 1440) {
+          cdClass = 'cd-today';
+          cdText = `⏳ ${h} ชม. ${m} น.`;
+          statusBadge = `<span style="color:#38bdf8;">📅 วันนี้</span>`;
+        } else {
+          const days = Math.floor(diffMin / 1440);
+          cdText = `📅 อีก ${days} วัน ${h % 24} ชม.`;
+          statusBadge = `<span style="color:#94a3b8;">📅 สัปดาห์นี้</span>`;
+        }
+      }
+
+      if (ev.is_today) {
+        rowClass += ' row-today';
+      }
+
+      const impactBadge = ev.impact === 'High' 
+        ? `<span class="impact-badge impact-high">🔴 กล่องแดง</span>`
+        : `<span class="impact-badge impact-medium">🟠 กล่องส้ม</span>`;
+
+      rowsHtml += `
+        <tr class="${rowClass}">
+          <td>
+            <div style="font-weight:600; color:#fff;">${ev.time_bkk_str}</div>
+            <div style="font-size:0.8rem; color:#94a3b8;">${ev.date_bkk_str}</div>
+          </td>
+          <td>
+            <div class="currency-tag">${ev.currency_label}</div>
+          </td>
+          <td>${impactBadge}</td>
+          <td class="title-col">${ev.title}</td>
+          <td><span class="num-val">${ev.forecast}</span></td>
+          <td><span class="num-val">${ev.previous}</span></td>
+          <td>
+            <div class="countdown-cell ${cdClass}">${cdText}</div>
+          </td>
+          <td>${statusBadge}</td>
+        </tr>
+      `;
+    });
+
+    tbody.innerHTML = rowsHtml;
+  }
+
+  // ทริกเกอร์เตือนเมื่อเข้าช่วง 15 นาที
+  function checkAndTriggerAlert(ev, diffMin) {
+    const alertKey = `${ev.id}_${diffMin <= 0 ? 'now' : '15m'}`;
+    if (!notifiedEventIds.has(alertKey)) {
+      notifiedEventIds.add(alertKey);
+
+      playAlertBeep(true);
+
+      if (Notification.permission === 'granted') {
+        const msg = diffMin <= 0 
+          ? `ถึงเวลาประกาศข่าวแล้ว! (${ev.currency_label} - ${ev.title})`
+          : `ข่าวกล่องแดงจะออกในอีก ${diffMin} นาที! (${ev.currency_label} - ${ev.title})`;
+
+        new Notification('🚨 ข่าวกล่องแดง FOREX FACTORY', {
+          body: msg,
+          icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="%23ef4444"/></svg>'
+        });
+      }
+    }
+  }
+
+  // คัดลอกสรุปข่าววันนี้เพื่อส่งลง LINE / Telegram
+  function copyTodaySummary() {
+    const highEvents = allEvents.filter(e => e.impact === 'High');
+    let summaryText = `🔴 สรุปข่าวกล่องแดง Forex Factory วันนี้ (${new Date().toLocaleDateString('th-TH')})\n🕒 เวลาประเทศไทย (UTC+7)\n--------------------------------------\n`;
+
+    const todayList = highEvents.filter(e => e.is_today);
+    if (todayList.length === 0) {
+      summaryText += "✅ วันนี้ไม่มีข่าวกล่องแดงที่มีผลกระทบสูง\n";
+    } else {
+      todayList.forEach(e => {
+        summaryText += `• ${e.time_bkk_str} ${e.currency_label} | ${e.title}\n`;
+        summaryText += `  └ คาด: ${e.forecast} | ก่อนหน้า: ${e.previous} (${e.countdown})\n`;
+      });
+    }
+
+    summaryText += "--------------------------------------\n⚠️ คำเตือน: ตลาดอาจผันผวนสูงและกราฟสวิงแรงช่วงข่าวออก";
+
+    navigator.clipboard.writeText(summaryText).then(() => {
+      showToast('📋 คัดลอกสรุปข่าวเรียบร้อย! พร้อมส่งใน LINE/Telegram', '📋');
+    }).catch(() => {
+      showToast('❌ ไม่สามารถคัดลอกได้', '❌');
+    });
+  }
+
+  // วนลูปอัปเดตเวลานับถอยหลังทุกๆ 1 วินาที
+  setInterval(() => {
+    renderTable();
+    updateMetrics();
+  }, 1000);
+
+  // เริ่มต้นโหลดข้อมูล
+  fetchNewsData();
+
+  // ออโต้รีเฟรชข้อมูลจากเว็บทุกๆ 15 นาที
+  setInterval(() => {
+    fetchNewsData(false);
+  }, 15 * 60 * 1000);
+</script>
+
+</body>
+</html>

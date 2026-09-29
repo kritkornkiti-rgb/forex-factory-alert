@@ -1,11 +1,13 @@
 {
-  "is_running": false,
-  "last_heartbeat": "2026-09-27T13:42:52.756404",
+  "is_running": true,
+  "last_heartbeat": "2026-09-28T13:03:30.118941",
   "monitored_assets": [
-    "GOLD (XAU/USD)"
+    "GBP/USD",
+    "USD/JPY"
   ],
   "timeframes": [
-    "15m",
-    "1h"
-  ]
+    "5m",
+    "15m"
+  ],
+  "interval": 60
 }
