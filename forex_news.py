@@ -72,9 +72,10 @@ THAI_MONTHS = [
 # Helper to Load Credentials
 # ==============================================================================
 def load_credentials():
-    """โหลด Token และ Chat ID จาก .env และ data/alert_config.json"""
+    """โหลด Token และ Chat ID จาก .env และ data/forex_news_config.json"""
+    forex_env_token = os.getenv("FOREX_TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN", "")
     creds = {
-        "telegram_token": os.getenv("TELEGRAM_BOT_TOKEN", ""),
+        "telegram_token": forex_env_token,
         "telegram_chat_id": os.getenv("TELEGRAM_CHAT_ID", ""),
         "line_token": os.getenv("LINE_TOKEN", ""),
         "discord_webhook": os.getenv("DISCORD_WEBHOOK_URL", "")
@@ -90,7 +91,9 @@ def load_credentials():
                         k, v = line.split("=", 1)
                         k = k.strip()
                         v = v.strip().strip("'\"")
-                        if k == "TELEGRAM_BOT_TOKEN" and v:
+                        if k == "FOREX_TELEGRAM_BOT_TOKEN" and v:
+                            creds["telegram_token"] = v
+                        elif k == "TELEGRAM_BOT_TOKEN" and not creds["telegram_token"] and v:
                             creds["telegram_token"] = v
                         elif k == "TELEGRAM_CHAT_ID" and v:
                             creds["telegram_chat_id"] = v
@@ -101,14 +104,14 @@ def load_credentials():
         except Exception:
             pass
 
-    # อ่านจาก alert_config.json
+    # อ่านจาก forex_news_config.json
     if CONFIG_FILE.exists():
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 saved = json.load(f)
-                if not creds["telegram_token"] and saved.get("telegram_token"):
+                if saved.get("telegram_token"):
                     creds["telegram_token"] = saved["telegram_token"]
-                if not creds["telegram_chat_id"] and saved.get("telegram_chat_id"):
+                if saved.get("telegram_chat_id"):
                     creds["telegram_chat_id"] = saved["telegram_chat_id"]
         except Exception:
             pass
@@ -117,11 +120,11 @@ def load_credentials():
 
 
 def save_telegram_credentials(token: str, chat_id: str):
-    """บันทึก Telegram Token และ Chat ID ลง .env และ alert_config.json"""
+    """บันทึก Telegram Token และ Chat ID ลง .env และ forex_news_config.json"""
     token = token.strip()
     chat_id = chat_id.strip()
 
-    # 1. บันทึก alert_config.json
+    # 1. บันทึก forex_news_config.json
     cfg = {}
     if CONFIG_FILE.exists():
         try:
@@ -142,8 +145,8 @@ def save_telegram_credentials(token: str, chat_id: str):
     if ENV_FILE.exists():
         with open(ENV_FILE, "r", encoding="utf-8") as f:
             for line in f:
-                if line.startswith("TELEGRAM_BOT_TOKEN="):
-                    env_lines.append(f"TELEGRAM_BOT_TOKEN={token}\n")
+                if line.startswith("FOREX_TELEGRAM_BOT_TOKEN="):
+                    env_lines.append(f"FOREX_TELEGRAM_BOT_TOKEN={token}\n")
                     has_token = True
                 elif line.startswith("TELEGRAM_CHAT_ID="):
                     env_lines.append(f"TELEGRAM_CHAT_ID={chat_id}\n")
@@ -151,15 +154,14 @@ def save_telegram_credentials(token: str, chat_id: str):
                 else:
                     env_lines.append(line)
     if not has_token:
-        env_lines.append(f"TELEGRAM_BOT_TOKEN={token}\n")
+        env_lines.append(f"FOREX_TELEGRAM_BOT_TOKEN={token}\n")
     if not has_chat:
         env_lines.append(f"TELEGRAM_CHAT_ID={chat_id}\n")
 
     with open(ENV_FILE, "w", encoding="utf-8") as f:
         f.writelines(env_lines)
 
-    # อัปเดตใน os.environ ทันที
-    os.environ["TELEGRAM_BOT_TOKEN"] = token
+    os.environ["FOREX_TELEGRAM_BOT_TOKEN"] = token
     os.environ["TELEGRAM_CHAT_ID"] = chat_id
 
 
