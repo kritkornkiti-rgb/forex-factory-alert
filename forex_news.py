@@ -72,16 +72,17 @@ THAI_MONTHS = [
 # Helper to Load Credentials
 # ==============================================================================
 def load_credentials():
-    """โหลด Token และ Chat ID จาก .env และ data/forex_news_config.json"""
-    forex_env_token = os.getenv("FOREX_TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN", "")
+    """โหลด Token และ Chat ID จาก data/forex_news_config.json หรือ FOREX_TELEGRAM_BOT_TOKEN"""
+    DEFAULT_NEWS_TOKEN = "8919277790:AAHuUgy5Ao3fR3EfFK9tjFDCJWGaRdxTzkc"
+    forex_env_token = os.getenv("FOREX_TELEGRAM_BOT_TOKEN", "")
     creds = {
-        "telegram_token": forex_env_token,
-        "telegram_chat_id": os.getenv("TELEGRAM_CHAT_ID", ""),
+        "telegram_token": forex_env_token or DEFAULT_NEWS_TOKEN,
+        "telegram_chat_id": os.getenv("TELEGRAM_CHAT_ID", "1265496331"),
         "line_token": os.getenv("LINE_TOKEN", ""),
         "discord_webhook": os.getenv("DISCORD_WEBHOOK_URL", "")
     }
 
-    # อ่านจาก .env
+    # อ่านจาก .env (เฉพาะตัวแปร FOREX เท่านั้น ไม่ปนกับบอทเทรด)
     if ENV_FILE.exists():
         try:
             with open(ENV_FILE, "r", encoding="utf-8") as f:
@@ -93,8 +94,6 @@ def load_credentials():
                         v = v.strip().strip("'\"")
                         if k == "FOREX_TELEGRAM_BOT_TOKEN" and v:
                             creds["telegram_token"] = v
-                        elif k == "TELEGRAM_BOT_TOKEN" and not creds["telegram_token"] and v:
-                            creds["telegram_token"] = v
                         elif k == "TELEGRAM_CHAT_ID" and v:
                             creds["telegram_chat_id"] = v
                         elif k == "LINE_TOKEN" and v:
@@ -104,7 +103,7 @@ def load_credentials():
         except Exception:
             pass
 
-    # อ่านจาก forex_news_config.json
+    # อ่านจาก forex_news_config.json (มีสิทธิ์สูงสุด)
     if CONFIG_FILE.exists():
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:

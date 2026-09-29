@@ -127,7 +127,7 @@ class LiveMarketMonitor:
             return cached["bias"], htf_tf
 
         try:
-            df_htf = self.data_loader.fetch_data(asset, timeframe=htf_tf, limit=100, force_download=False)
+            df_htf = self.data_loader.fetch_data(asset, timeframe=htf_tf, limit=100, force_download=True)
             df_feat_htf, _ = self.feature_engineer.prepare_features(df_htf, include_target=False)
             if not df_feat_htf.empty:
                 latest_htf = df_feat_htf.iloc[-1]
