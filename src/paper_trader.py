@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 import pandas as pd
 
-from src.config import DATA_DIR, TradingConfig, SUPPORTED_ASSETS
+from src.config import DATA_DIR, TradingConfig, SUPPORTED_ASSETS, format_currency_price
 from src.data_loader import MarketDataLoader
 from src.feature_engineering import FeatureEngineer
 from src.model import AITradingModel
@@ -119,15 +119,26 @@ class PaperTrader:
         action_detail = ""
 
         # 3. Check Open Position for Exit
+        closed_trade_data = None
+        opened_trade_data = None
+
         if self.open_position is not None:
             pos = self.open_position
-            entry_price = pos['entry_price']
-            size = pos['size']
-            sl_price = pos['sl_price']
-            tp_price = pos['tp_price']
+            direction = pos.get('direction', 'BUY (LONG)')
+            is_long = "BUY" in direction.upper() or "LONG" in direction.upper()
+            entry_price = float(pos['entry_price'])
+            size = float(pos['size'])
+            sl_price = float(pos['sl_price'])
+            tp_price = float(pos['tp_price'])
 
-            hit_sl = current_price <= sl_price
-            hit_tp = current_price >= tp_price
+            if is_long:
+                hit_sl = current_price <= sl_price
+                hit_tp = current_price >= tp_price
+                gross_pnl = (current_price - entry_price) * size
+            else:
+                hit_sl = current_price >= sl_price
+                hit_tp = current_price <= tp_price
+                gross_pnl = (entry_price - current_price) * size
 
             exit_reason = None
             if hit_sl:
@@ -137,22 +148,40 @@ class PaperTrader:
 
             if exit_reason:
                 exit_fee = current_price * size * fee_rate
-                gross_pnl = (current_price - entry_price) * size
                 net_pnl = gross_pnl - pos.get('entry_fee', 0.0) - exit_fee
-                self.cash += (current_price * size) - exit_fee
+                if is_long:
+                    self.cash += (current_price * size) - exit_fee
+                else:
+                    self.cash += (entry_price * size) + net_pnl
+
+                # Calculate holding duration
+                try:
+                    t_entry = pd.to_datetime(pos['entry_time'])
+                    t_exit = pd.to_datetime(current_time)
+                    total_sec = max(0, int((t_exit - t_entry).total_seconds()))
+                    hrs = total_sec // 3600
+                    mins = (total_sec % 3600) // 60
+                    duration_str = f"{hrs} ชม. {mins} นาที" if hrs > 0 else f"{mins} นาที"
+                except Exception:
+                    duration_str = "N/A"
 
                 closed_trade = {
+                    "asset": self.asset_name,
+                    "timeframe": self.timeframe,
+                    "direction": direction,
                     "entry_time": pos['entry_time'],
                     "exit_time": current_time,
                     "entry_price": entry_price,
                     "exit_price": current_price,
                     "size": size,
+                    "duration_str": duration_str,
                     "net_pnl": round(net_pnl, 2),
                     "net_pnl_pct": round((net_pnl / (entry_price * size)) * 100, 2),
                     "exit_reason": exit_reason,
                     "fee_paid": round(pos.get('entry_fee', 0.0) + exit_fee, 4)
                 }
                 self.trade_history.append(closed_trade)
+                closed_trade_data = closed_trade
 
                 # Feed outcome into Continuous Learning Experience Buffer
                 self.continuous_learner.record_experience(
@@ -170,14 +199,15 @@ class PaperTrader:
 
                 self.open_position = None
                 action_taken = f"CLOSED_{exit_reason}"
-                action_detail = f"Closed at ${current_price:.2f} | Net PnL: ${net_pnl:.2f} ({closed_trade['net_pnl_pct']}%)"
+                p_c_str = format_currency_price(self.asset_name, current_price)
+                action_detail = f"Closed {direction} at {p_c_str} ({duration_str}) | Net PnL: ${net_pnl:.2f} ({closed_trade['net_pnl_pct']}%) | Entry: {pos['entry_time']}"
                 self.save_state()
 
         # 4. If flat, check AI Signal with self-adaptive threshold
         self.model.confidence_threshold = self.continuous_learner.get_adaptive_confidence_threshold()
         signal, confidence, prob_dict = self.model.predict_signal(latest_bar)
 
-        if self.open_position is None and signal == 1:
+        if self.open_position is None and signal in [1, -1]:
             # Sizing based on risk
             risk_amount = self.cash * self.config.risk_per_trade
             atr_distance = max(current_atr * self.config.sl_atr_multiplier, current_price * 0.005)
@@ -189,27 +219,37 @@ class PaperTrader:
                 size = max_size
 
             order_value = size * current_price
-            if order_value >= 15.0: # Minimum order value
+            if order_value >= 15.0:  # Minimum order value
                 entry_fee = order_value * fee_rate
                 self.cash -= (order_value + entry_fee)
 
-                sl_price = current_price - (self.config.sl_atr_multiplier * current_atr)
-                tp_price = current_price + (self.config.tp_atr_multiplier * current_atr)
+                if signal == 1:
+                    pos_dir = "BUY (LONG)"
+                    sl_price = current_price - (self.config.sl_atr_multiplier * current_atr)
+                    tp_price = current_price + (self.config.tp_atr_multiplier * current_atr)
+                    action_taken = "OPEN_LONG"
+                else:
+                    pos_dir = "SELL (SHORT)"
+                    sl_price = current_price + (self.config.sl_atr_multiplier * current_atr)
+                    tp_price = current_price - (self.config.tp_atr_multiplier * current_atr)
+                    action_taken = "OPEN_SHORT"
 
                 self.open_position = {
+                    "direction": pos_dir,
                     "entry_time": current_time,
                     "entry_price": current_price,
                     "size": size,
-                    "sl_price": round(sl_price, 4),
-                    "tp_price": round(tp_price, 4),
+                    "sl_price": round(sl_price, 5 if "forex" in asset_info.get("category", "") else 2),
+                    "tp_price": round(tp_price, 5 if "forex" in asset_info.get("category", "") else 2),
                     "entry_fee": entry_fee,
                     "order_value": order_value,
                     "confidence": round(confidence, 4),
                     "smc_structure": int(latest_bar.get('smc_structure', 1)),
                     "range_position": float(latest_bar.get('range_position', 0.5))
                 }
-                action_taken = "OPEN_LONG"
-                action_detail = f"Bought {size:.4f} units at ${current_price:.2f} (SL: ${sl_price:.2f}, TP: ${tp_price:.2f}, Conf: {confidence:.1%})"
+                opened_trade_data = self.open_position
+                p_c_str = format_currency_price(self.asset_name, current_price)
+                action_detail = f"{pos_dir} {size:.4f} units at {p_c_str} (Entry Time: {current_time}, Conf: {confidence:.1%})"
                 self.save_state()
 
         # Calculate current total portfolio equity
@@ -217,7 +257,11 @@ class PaperTrader:
         pos_value = 0.0
         if self.open_position is not None:
             pos_value = self.open_position['size'] * current_price
-            unrealized_pnl = (current_price - self.open_position['entry_price']) * self.open_position['size']
+            pos_dir = self.open_position.get('direction', 'BUY')
+            if "BUY" in pos_dir or "LONG" in pos_dir:
+                unrealized_pnl = (current_price - self.open_position['entry_price']) * self.open_position['size']
+            else:
+                unrealized_pnl = (self.open_position['entry_price'] - current_price) * self.open_position['size']
 
         total_equity = self.cash + pos_value
 
@@ -232,6 +276,8 @@ class PaperTrader:
             "probabilities": {k: round(v, 4) for k, v in prob_dict.items()},
             "action_taken": action_taken,
             "action_detail": action_detail,
+            "closed_trade_data": closed_trade_data,
+            "opened_trade_data": opened_trade_data,
             "cash": round(self.cash, 2),
             "position_value": round(pos_value, 2),
             "unrealized_pnl": round(unrealized_pnl, 2),
@@ -241,3 +287,4 @@ class PaperTrader:
             "total_closed_trades": len(self.trade_history),
             "learning_experiences": len(self.continuous_learner.experiences)
         }
+

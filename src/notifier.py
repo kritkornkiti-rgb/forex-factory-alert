@@ -211,6 +211,93 @@ class AlertNotifier:
             line_msg = f"\n[AI Signal] {setup.direction} for {setup.asset}\nEntry: {p_entry}\nSL: {p_sl}\nTP1: {p_tp1}\nTP2: {p_tp2}"
             self.send_line(line_msg)
 
+    def broadcast_position_closed(self, trade: dict):
+        """Formats and broadcasts a rich Position Closed notification with full entry/exit tracking"""
+        asset = trade.get("asset", "")
+        tf = trade.get("timeframe", "")
+        direction = trade.get("direction", "BUY (LONG)")
+        entry_time = trade.get("entry_time", "")
+        exit_time = trade.get("exit_time", "")
+        entry_price = trade.get("entry_price", 0.0)
+        exit_price = trade.get("exit_price", 0.0)
+        duration_str = trade.get("duration_str", "N/A")
+        net_pnl = trade.get("net_pnl", 0.0)
+        pnl_pct = trade.get("net_pnl_pct", 0.0)
+        exit_reason = trade.get("exit_reason", "")
+        size = trade.get("size", 0.0)
+
+        p_entry = format_currency_price(asset, entry_price)
+        p_exit = format_currency_price(asset, exit_price)
+
+        is_win = net_pnl >= 0
+        pnl_badge = "🟢 กำไร (PROFIT)" if is_win else "🔴 ขาดทุน (LOSS)"
+        reason_label = "🏆 TAKE PROFIT (แตะเป้าหมาย)" if exit_reason == "TAKE_PROFIT" else "🛑 STOP LOSS (ชนจุดตัดขาดทุน)"
+        dir_badge = "🟢 BUY (LONG)" if "BUY" in direction.upper() else "🔴 SELL (SHORT)"
+
+        telegram_msg = (
+            f"📢 <b>AI bottrade: ปิดสถานะออเดอร์ ({reason_label})</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"📊 <b>สินทรัพย์:</b> {asset} ({tf})\n"
+            f"⚡ <b>ประเภทออเดอร์:</b> <b>{dir_badge}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"🕐 <b>เวลาเปิดออเดอร์ (Entry Time):</b> <code>{entry_time}</code>\n"
+            f"🎯 <b>ราคาเปิด (Entry Price):</b> <code>{p_entry}</code>\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"🕒 <b>เวลาปิดออเดอร์ (Exit Time):</b> <code>{exit_time}</code>\n"
+            f"🏁 <b>ราคาปิด (Exit Price):</b> <code>{p_exit}</code>\n"
+            f"⏱️ <b>ระยะเวลาถือครอง:</b> <b>{duration_str}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"💵 <b>ผลลัพธ์สุทธิ:</b> <b>{'+' if is_win else ''}{net_pnl:,.2f} USD ({pnl_pct:+.2f}%)</b> {pnl_badge}\n"
+            f"💼 <b>ขนาดออเดอร์:</b> <code>{size:.4f} units</code>"
+        )
+
+        title = f"📢 Position Closed: {asset} ({tf}) - {'Profit' if is_win else 'Loss'}"
+        mac_msg = f"{dir_badge} closed at {p_exit} ({reason_label})\nPnL: {'+' if is_win else ''}{net_pnl:.2f} USD ({pnl_pct:+.2f}%)\nEntry: {entry_time}"
+        self.send_macos_notification(title, mac_msg)
+
+        if self.config.get("telegram_enabled"):
+            self.send_telegram(telegram_msg)
+        if self.config.get("discord_enabled"):
+            self.send_discord(telegram_msg.replace("<b>", "**").replace("</b>", "**").replace("<code>", "`").replace("</code>", "`"))
+
+    def broadcast_position_opened(self, pos: dict, asset: str, tf: str):
+        """Formats and broadcasts a detailed Position Opened notification"""
+        direction = pos.get("direction", "BUY (LONG)")
+        entry_time = pos.get("entry_time", "")
+        entry_price = pos.get("entry_price", 0.0)
+        sl_price = pos.get("sl_price", 0.0)
+        tp_price = pos.get("tp_price", 0.0)
+        size = pos.get("size", 0.0)
+        confidence = pos.get("confidence", 0.5)
+
+        p_entry = format_currency_price(asset, entry_price)
+        p_sl = format_currency_price(asset, sl_price)
+        p_tp = format_currency_price(asset, tp_price)
+
+        dir_badge = "🟢 BUY (LONG)" if "BUY" in direction.upper() else "🔴 SELL (SHORT)"
+
+        telegram_msg = (
+            f"⚡ <b>AI bottrade: เปิดสถานะใหม่ (POSITION OPENED)</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"📊 <b>สินทรัพย์:</b> {asset} ({tf})\n"
+            f"⚡ <b>ทิศทาง:</b> <b>{dir_badge}</b>\n"
+            f"🕐 <b>เวลาเปิดออเดอร์:</b> <code>{entry_time}</code>\n"
+            f"🎯 <b>ราคาเปิด (Entry):</b> <code>{p_entry}</code>\n"
+            f"🛑 <b>Stop Loss (SL):</b> <code>{p_sl}</code>\n"
+            f"🏆 <b>Take Profit (TP):</b> <code>{p_tp}</code>\n"
+            f"💼 <b>ขนาดไม้:</b> <code>{size:.4f} units</code>\n"
+            f"🧠 <b>ความมั่นใจ AI:</b> {confidence:.1%}"
+        )
+
+        title = f"⚡ Position Opened: {asset} ({tf}) - {direction}"
+        mac_msg = f"{direction} opened at {p_entry}\nSL: {p_sl} | TP: {p_tp}\nTime: {entry_time}"
+        self.send_macos_notification(title, mac_msg)
+
+        if self.config.get("telegram_enabled"):
+            self.send_telegram(telegram_msg)
+        if self.config.get("discord_enabled"):
+            self.send_discord(telegram_msg.replace("<b>", "**").replace("</b>", "**").replace("<code>", "`").replace("</code>", "`"))
+
     def test_alert(self) -> dict:
         """Sends a test alert to all configured channels"""
         results = {}
