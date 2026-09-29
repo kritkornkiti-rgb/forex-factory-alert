@@ -278,7 +278,13 @@ class LiveMarketMonitor:
         paper_detail = ""
         if self.enable_paper_trade:
             trader = PaperTrader(asset_name=asset, timeframe=tf, model=model)
-            step_result = trader.step()
+            step_result = trader.step(
+                setup=setup,
+                current_price=current_price,
+                current_time=candle_time,
+                current_high=float(latest_candle['high']),
+                current_low=float(latest_candle['low'])
+            )
             paper_action = step_result.get("action_taken", "NONE")
             paper_detail = step_result.get("action_detail", "")
 
@@ -315,7 +321,8 @@ class LiveMarketMonitor:
                 "sl": setup.stop_loss,
                 "tp1": setup.take_profit_1,
                 "tp2": setup.take_profit_2,
-                "size": setup.recommended_size
+                "size": setup.recommended_size,
+                "candlestick_pattern": setup.candlestick_pattern
             } if setup.status == "ACTIVE_SETUP" else None
         }
 

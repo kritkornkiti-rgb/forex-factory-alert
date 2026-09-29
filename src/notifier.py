@@ -164,6 +164,9 @@ class AlertNotifier:
             htf_line_dc = f"🔭 **HTF Trend ({setup.htf_timeframe}):** {setup.htf_bias}\n"
             htf_line_mac = f"HTF ({setup.htf_timeframe}): {setup.htf_bias} | "
 
+        candle_line_tg = f"🕯️ <b>การยืนยันแท่งเทียน:</b> {setup.candlestick_pattern}\n" if setup.candlestick_pattern else ""
+        candle_line_dc = f"🕯️ **การยืนยันแท่งเทียน:** {setup.candlestick_pattern}\n" if setup.candlestick_pattern else ""
+
         mac_msg = (
             f"Asset: {setup.asset} ({setup.timeframe})\n"
             f"{htf_line_mac}Conf: {setup.ai_confidence:.1%} | SMC: {setup.confluence_score}/{setup.total_confluences}\n"
@@ -177,8 +180,9 @@ class AlertNotifier:
             f"📊 <b>สินทรัพย์:</b> {setup.asset} ({setup.timeframe})\n"
             f"⚡ <b>สัญญาณ:</b> <b>{setup.direction}</b>\n"
             f"{htf_line_tg}"
+            f"{candle_line_tg}"
             f"🧠 <b>ความมั่นใจ AI:</b> {setup.ai_confidence:.1%}\n"
-            f"🏛️ <b>SMC Confluence:</b> {setup.confluence_score}/{setup.total_confluences} (เกณฑ์ ≥4/6)\n"
+            f"🏛️ <b>SMC Confluence:</b> {setup.confluence_score}/{setup.total_confluences} (เกณฑ์ ≥4/{setup.total_confluences})\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"🎯 <b>ราคาเข้า (Entry):</b> <code>{p_entry}</code>\n"
             f"🛑 <b>Stop Loss (SL):</b> <code>{p_sl}</code> (-{setup.sl_pct:.2f}%)\n"
@@ -194,7 +198,8 @@ class AlertNotifier:
             f"**Asset:** {setup.asset} ({setup.timeframe})\n"
             f"**Signal:** {setup.direction} (Confidence: {setup.ai_confidence:.1%})\n"
             f"{htf_line_dc}"
-            f"**SMC Confluence:** {setup.confluence_score}/{setup.total_confluences} (เกณฑ์ ≥4/6)\n"
+            f"{candle_line_dc}"
+            f"**SMC Confluence:** {setup.confluence_score}/{setup.total_confluences} (เกณฑ์ ≥4/{setup.total_confluences})\n"
             f"🎯 **Entry:** {p_entry}\n"
             f"🛑 **SL:** {p_sl} (-{setup.sl_pct:.2f}%)\n"
             f"🏆 **TP1:** {p_tp1} (+{setup.tp1_pct:.2f}%)\n"
@@ -276,12 +281,16 @@ class AlertNotifier:
 
         dir_badge = "🟢 BUY (LONG)" if "BUY" in direction.upper() else "🔴 SELL (SHORT)"
 
+        candle_pattern = pos.get("candlestick_pattern")
+        candle_line = f"🕯️ <b>การยืนยันแท่งเทียน:</b> {candle_pattern}\n" if candle_pattern else ""
+
         telegram_msg = (
             f"⚡ <b>AI bottrade: เปิดสถานะใหม่ (POSITION OPENED)</b>\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"📊 <b>สินทรัพย์:</b> {asset} ({tf})\n"
             f"⚡ <b>ทิศทาง:</b> <b>{dir_badge}</b>\n"
             f"🕐 <b>เวลาเปิดออเดอร์:</b> <code>{entry_time}</code>\n"
+            f"{candle_line}"
             f"🎯 <b>ราคาเปิด (Entry):</b> <code>{p_entry}</code>\n"
             f"🛑 <b>Stop Loss (SL):</b> <code>{p_sl}</code>\n"
             f"🏆 <b>Take Profit (TP):</b> <code>{p_tp}</code>\n"

@@ -331,7 +331,8 @@ def main():
                 htf_color = "#00e676" if "BULL" in trade_setup.htf_bias.upper() else ("#ff1744" if "BEAR" in trade_setup.htf_bias.upper() else "#888")
                 htf_badge = f" &nbsp;|&nbsp; HTF ({trade_setup.htf_timeframe}): <span style='color:{htf_color}; font-weight:bold;'>{trade_setup.htf_bias}</span>"
 
-            st.markdown(f"**สัญญาณตลาด:** <span style='background-color:{badge_color}; color:#000; padding:4px 14px; border-radius:12px; font-weight:bold;'>{trade_setup.direction}</span> &nbsp;|&nbsp; AI Confidence: **{trade_setup.ai_confidence:.1%}** &nbsp;|&nbsp; Confluence: **{trade_setup.confluence_score}/{trade_setup.total_confluences}** (เกณฑ์ ≥4/6){htf_badge}", unsafe_allow_html=True)
+            candle_badge = f" &nbsp;|&nbsp; 🕯️ ยืนยัน: <span style='color:#ffeb3b; font-weight:bold;'>{trade_setup.candlestick_pattern}</span>" if trade_setup.candlestick_pattern else ""
+            st.markdown(f"**สัญญาณตลาด:** <span style='background-color:{badge_color}; color:#000; padding:4px 14px; border-radius:12px; font-weight:bold;'>{trade_setup.direction}</span> &nbsp;|&nbsp; AI Confidence: **{trade_setup.ai_confidence:.1%}** &nbsp;|&nbsp; Confluence: **{trade_setup.confluence_score}/{trade_setup.total_confluences}** (เกณฑ์ ≥4/{trade_setup.total_confluences}){htf_badge}{candle_badge}", unsafe_allow_html=True)
 
             if trade_setup.status == "ACTIVE_SETUP":
                 p_entry_str = format_currency_price(selected_asset, trade_setup.entry_price)

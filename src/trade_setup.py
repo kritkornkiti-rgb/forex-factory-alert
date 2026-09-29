@@ -65,6 +65,109 @@ class TradeSetup:
     rationale_th: str
     htf_timeframe: Optional[str] = None
     htf_bias: Optional[str] = None
+    candlestick_pattern: Optional[str] = None
+
+
+def evaluate_candlestick_confirmation(df_features: pd.DataFrame, direction: str) -> Tuple[bool, str]:
+    """
+    Evaluates institutional Price Action / Candlestick Confirmation on the latest bars:
+    - Lower/Upper Rejection Wick (Pin bar / Hammer >= 35% wick)
+    - Engulfing Candlestick pattern
+    - Momentum displacement candle in the trade direction
+    - Structural reversal triggers (CHoCH / BOS / Sweep) without strong adverse candle
+    """
+    if len(df_features) == 0:
+        return False, "ไม่มีข้อมูลแท่งเทียน"
+
+    latest = df_features.iloc[-1]
+    prev = df_features.iloc[-2] if len(df_features) >= 2 else latest
+
+    c_open = float(latest['open'])
+    c_close = float(latest['close'])
+    c_high = float(latest['high'])
+    c_low = float(latest['low'])
+    c_range = max(1e-6, c_high - c_low)
+    body = abs(c_close - c_open)
+
+    p_open = float(prev['open'])
+    p_close = float(prev['close'])
+    p_high = float(prev['high'])
+    p_low = float(prev['low'])
+    p_range = max(1e-6, p_high - p_low)
+
+    if direction == "BUY":
+        # 1. Lower Rejection Wick on current candle (Pin bar / Hammer)
+        lower_wick = min(c_open, c_close) - c_low
+        wick_ratio = lower_wick / c_range
+        if wick_ratio >= 0.35 and c_close >= (c_low + 0.30 * c_range):
+            return True, f"แท่งเทียนปฏิเสธราคาต่ำ (Lower Rejection Wick {wick_ratio:.0%}) 🟢"
+
+        # 2. Bullish Engulfing
+        if c_close > c_open:
+            if c_close > p_high:
+                return True, "แท่งเทียน Bullish Engulfing ทะลุ High แท่งก่อนหน้า 🟢"
+            elif c_close > p_open and c_open <= p_close and body >= 0.5 * p_range:
+                return True, "แท่งเทียน Bullish Engulfing กลืนกินแท่งแดงก่อนหน้า 🟢"
+
+        # 3. Strong Bullish Momentum Candle
+        if c_close > c_open and (body / c_range) >= 0.50 and c_close > p_close:
+            return True, f"แท่งเทียนโมเมนตัมขาขึ้นเต็มแท่ง (Bullish Momentum Body {body/c_range:.0%}) 🟢"
+
+        # 4. Lower Rejection Wick on PREVIOUS candle + Current is Bullish confirmation
+        p_lower_wick = min(p_open, p_close) - p_low
+        p_wick_ratio = p_lower_wick / p_range
+        if p_wick_ratio >= 0.35 and c_close > c_open:
+            return True, f"แท่งก่อนหน้าทิ้งไส้ล่าง (Wick {p_wick_ratio:.0%}) และแท่งปัจจุบันคอนเฟิร์มแรงซื้อ 🟢"
+
+        # 5. SMC Trigger (CHoCH / BOS / Liquidity Sweep Low)
+        recent_choch = bool(latest.get('choch_bullish', False)) or bool(prev.get('choch_bullish', False))
+        recent_bos = bool(latest.get('bos_bullish', False)) or bool(prev.get('bos_bullish', False))
+        recent_sweep = bool(latest.get('sweep_low', False)) or bool(prev.get('sweep_low', False))
+
+        is_dumping = (c_close < c_open) and ((c_open - c_close) / c_range > 0.60)
+        if (recent_choch or recent_sweep or recent_bos) and not is_dumping:
+            trig_name = "Bullish CHoCH" if recent_choch else ("Sweep Low" if recent_sweep else "Bullish BOS")
+            return True, f"เกิดโครงสร้างกลับตัว {trig_name} ยืนยันการเปลี่ยนทิศทาง 🟢"
+
+        return False, "ยังไม่พบแท่งเทียนยืนยันแรงซื้อ (ไม่มี Rejection Wick / Engulfing) แท่งเทียนยังทิ้งตัวลง ⏳"
+
+    elif direction == "SELL":
+        # 1. Upper Rejection Wick on current candle (Shooting Star / Bearish Pin)
+        upper_wick = c_high - max(c_open, c_close)
+        wick_ratio = upper_wick / c_range
+        if wick_ratio >= 0.35 and c_close <= (c_high - 0.30 * c_range):
+            return True, f"แท่งเทียนปฏิเสธราคาสูง (Upper Rejection Wick {wick_ratio:.0%}) 🔴"
+
+        # 2. Bearish Engulfing
+        if c_close < c_open:
+            if c_close < p_low:
+                return True, "แท่งเทียน Bearish Engulfing หลุด Low แท่งก่อนหน้า 🔴"
+            elif c_close < p_open and c_open >= p_close and body >= 0.5 * p_range:
+                return True, "แท่งเทียน Bearish Engulfing กลืนกินแท่งเขียวก่อนหน้า 🔴"
+
+        # 3. Strong Bearish Momentum Candle
+        if c_close < c_open and (body / c_range) >= 0.50 and c_close < p_close:
+            return True, f"แท่งเทียนโมเมนตัมขาลงเต็มแท่ง (Bearish Momentum Body {body/c_range:.0%}) 🔴"
+
+        # 4. Upper Rejection Wick on PREVIOUS candle + Current is Bearish confirmation
+        p_upper_wick = p_high - max(p_open, p_close)
+        p_wick_ratio = p_upper_wick / p_range
+        if p_wick_ratio >= 0.35 and c_close < c_open:
+            return True, f"แท่งก่อนหน้าทิ้งไส้บน (Wick {p_wick_ratio:.0%}) และแท่งปัจจุบันคอนเฟิร์มแรงขาย 🔴"
+
+        # 5. SMC Trigger (CHoCH / BOS / Liquidity Sweep High)
+        recent_choch = bool(latest.get('choch_bearish', False)) or bool(prev.get('choch_bearish', False))
+        recent_bos = bool(latest.get('bos_bearish', False)) or bool(prev.get('bos_bearish', False))
+        recent_sweep = bool(latest.get('sweep_high', False)) or bool(prev.get('sweep_high', False))
+
+        is_pumping = (c_close > c_open) and ((c_close - c_open) / c_range > 0.60)
+        if (recent_choch or recent_sweep or recent_bos) and not is_pumping:
+            trig_name = "Bearish CHoCH" if recent_choch else ("Sweep High" if recent_sweep else "Bearish BOS")
+            return True, f"เกิดโครงสร้างกลับตัว {trig_name} ยืนยันการเปลี่ยนทิศทาง 🔴"
+
+        return False, "ยังไม่พบแท่งเทียนยืนยันแรงขาย (ไม่มี Upper Rejection Wick / Bearish Engulfing) แท่งเทียนยังพุ่งขึ้น ⏳"
+
+    return False, "N/A"
 
 
 class TradeSetupGenerator:
@@ -177,8 +280,6 @@ class TradeSetupGenerator:
         if ai_aligned:
             confluence_score += 1
 
-        total_confluences = len(confluences)
-
         recent_swing_lows = df_features[df_features['is_swing_low']].tail(3)
         recent_swing_highs = df_features[df_features['is_swing_high']].tail(3)
 
@@ -186,7 +287,24 @@ class TradeSetupGenerator:
         raw_buy = (signal == 1 or prob_dict.get('BUY', 0.0) >= 0.40) and (is_discount or in_bull_ob or struct_aligned)
         raw_sell = (signal == -1 or prob_dict.get('SELL', 0.0) >= 0.40) and (is_premium or in_bear_ob or struct_aligned)
 
-        # Filter 1: Minimum Confluence Score (>= 4/6)
+        # Candlestick Confirmation Evaluation
+        bull_confirmed, bull_candle_desc = evaluate_candlestick_confirmation(df_features, "BUY")
+        bear_confirmed, bear_candle_desc = evaluate_candlestick_confirmation(df_features, "SELL")
+
+        # Confluence 7: Candlestick Confirmation (แท่งเทียนยืนยันแรงซื้อ/ขาย)
+        candle_aligned = (signal == 1 and bull_confirmed) or (signal == -1 and bear_confirmed) or (raw_buy and bull_confirmed) or (raw_sell and bear_confirmed)
+        candle_detail = bull_candle_desc if (raw_buy or signal == 1) else (bear_candle_desc if (raw_sell or signal == -1) else "ยังไม่มีการคอนเฟิร์มแท่งเทียน")
+        confluences.append({
+            "name": "Candlestick Confirmation (แท่งเทียนยืนยันแรงซื้อ/ขาย)",
+            "passed": candle_aligned,
+            "detail": candle_detail
+        })
+        if candle_aligned:
+            confluence_score += 1
+
+        total_confluences = len(confluences)
+
+        # Filter 1: Minimum Confluence Score (>= 4/7)
         meets_confluence = (confluence_score >= min_confluence)
 
         # Filter 2: Higher Timeframe (HTF) Alignment Filter
@@ -208,17 +326,30 @@ class TradeSetupGenerator:
             elif raw_sell and "BEARISH" in htf_bias_upper:
                 htf_confirmed_str = f" [HTF {tf_label}: BEARISH 🔴 สอดคล้องภาพใหญ่]"
 
-        is_buy_setup = raw_buy and meets_confluence and not htf_filter_rejected
-        is_sell_setup = raw_sell and meets_confluence and not htf_filter_rejected
+        # Filter 3: Candlestick Confirmation is MANDATORY for active execution
+        is_buy_setup = raw_buy and meets_confluence and not htf_filter_rejected and bull_confirmed
+        is_sell_setup = raw_sell and meets_confluence and not htf_filter_rejected and bear_confirmed
+
+        candle_unconfirmed = False
+        candle_unconfirmed_reason = ""
+        if raw_buy and meets_confluence and not htf_filter_rejected and not bull_confirmed:
+            candle_unconfirmed = True
+            candle_unconfirmed_reason = f"สัญญาณ BUY ในกรอบ {timeframe} อยู่ในโซน Discount และผ่านเกณฑ์ SMC แต่ 'ยังไม่พบแท่งเทียนยืนยันแรงซื้อ' ({bull_candle_desc}) -> ระบบ WAIT เพื่อป้องกันการรับมีด (Falling Knife)"
+        elif raw_sell and meets_confluence and not htf_filter_rejected and not bear_confirmed:
+            candle_unconfirmed = True
+            candle_unconfirmed_reason = f"สัญญาณ SELL ในกรอบ {timeframe} อยู่ในโซน Premium และผ่านเกณฑ์ SMC แต่ 'ยังไม่พบแท่งเทียนยืนยันแรงขาย' ({bear_candle_desc}) -> ระบบ WAIT เพื่อป้องกันการ Sell สวนแรงซื้อที่กำลังพุ่ง"
+
+        dec = get_asset_decimals(asset_name)
+        candlestick_pattern = None
 
         if is_buy_setup:
             direction = "BUY (LONG)"
             status = "ACTIVE_SETUP"
+            candlestick_pattern = bull_candle_desc
 
             # Entry Level
             entry_price = current_price
-            entry_zone = (round(current_price * 0.998, 5 if "forex" in SUPPORTED_ASSETS.get(asset_name, {}).get("category", "") else 2),
-                          round(current_price * 1.001, 5 if "forex" in SUPPORTED_ASSETS.get(asset_name, {}).get("category", "") else 2))
+            entry_zone = (round(current_price * 0.998, dec), round(current_price * 1.001, dec))
             entry_type = "MARKET_DISCOUNT" if is_discount else "SMC_CONFIRMATION"
 
             # Unified SL: Check if there is an SMC Swing Low or Order Block base nearby
@@ -264,7 +395,7 @@ class TradeSetupGenerator:
             rationale = (
                 f"สัญญาณ BUY เกิดขึ้นเนื่องจากราคาอยู่ในโซน DISCOUNT ({range_pos*100:.1f}%) "
                 f"และโครงสร้างตลาดเป็นขาขึ้น (BULLISH) โดยโมเดล AI ให้ความน่าจะเป็น {prob_dict.get('BUY', 0.0):.1%}"
-                f"{htf_confirmed_str} "
+                f"{htf_confirmed_str} [คอนเฟิร์ม: {bull_candle_desc}] "
                 f"แนะนำเปิดสถานะ LONG ที่ราคา {p_entry} โดยมีจุดตัดขาดทุน (SL) ที่ {p_sl} "
                 f"({sl_reason}) และเป้าหมายทำกำไรหลัก (TP1) ที่ {p_tp1} (R:R 1:2.0)"
             )
@@ -272,10 +403,10 @@ class TradeSetupGenerator:
         elif is_sell_setup:
             direction = "SELL (SHORT)"
             status = "ACTIVE_SETUP"
+            candlestick_pattern = bear_candle_desc
 
             entry_price = current_price
-            entry_zone = (round(current_price * 0.999, 5 if "forex" in SUPPORTED_ASSETS.get(asset_name, {}).get("category", "") else 2),
-                          round(current_price * 1.002, 5 if "forex" in SUPPORTED_ASSETS.get(asset_name, {}).get("category", "") else 2))
+            entry_zone = (round(current_price * 0.999, dec), round(current_price * 1.002, dec))
             entry_type = "MARKET_PREMIUM" if is_premium else "SMC_CONFIRMATION"
 
             default_atr_sl_dist = max(atr * self.config.sl_atr_multiplier, current_price * 0.004)
@@ -316,7 +447,7 @@ class TradeSetupGenerator:
             rationale = (
                 f"สัญญาณ SELL เกิดขึ้นเนื่องจากราคาอยู่ในโซน PREMIUM ({range_pos*100:.1f}%) "
                 f"และโครงสร้างตลาดเป็นขาลง (BEARISH) โดยโมเดล AI ให้ความน่าจะเป็น {prob_dict.get('SELL', 0.0):.1%}"
-                f"{htf_confirmed_str} "
+                f"{htf_confirmed_str} [คอนเฟิร์ม: {bear_candle_desc}] "
                 f"แนะนำเปิดสถานะ SHORT ที่ราคา {p_entry} โดยมีจุดตัดขาดทุน (SL) ที่ {p_sl} "
                 f"({sl_reason}) และเป้าหมายทำกำไรหลัก (TP1) ที่ {p_tp1} (R:R 1:2.0)"
             )
@@ -345,18 +476,20 @@ class TradeSetupGenerator:
             if htf_filter_rejected:
                 sl_reason = f"กรองออกโดย HTF Alignment ({htf_timeframe or 'HTF'})"
                 rationale = htf_rejection_reason
+            elif candle_unconfirmed:
+                sl_reason = "รอแท่งเทียนยืนยันการกลับตัว (Candle Confirmation)"
+                rationale = candle_unconfirmed_reason
             elif not meets_confluence and (raw_buy or raw_sell):
                 cand_dir = "BUY" if raw_buy else "SELL"
                 sl_reason = f"Confluence ไม่ผ่านเกณฑ์ ({confluence_score}/{total_confluences} < {min_confluence})"
                 rationale = (
-                    f"ตรวจพบสัญญาณ {cand_dir} แต่ Confluence ไม่ผ่านเกณฑ์ขั้นต่ำ ({confluence_score}/{total_confluences} ข้อ - ต้องการอย่างน้อย {min_confluence}/6) "
+                    f"ตรวจพบสัญญาณ {cand_dir} แต่ Confluence ไม่ผ่านเกณฑ์ขั้นต่ำ ({confluence_score}/{total_confluences} ข้อ - ต้องการอย่างน้อย {min_confluence}/{total_confluences}) "
                     f"ระบบกรองออกเพื่อลดสัญญาณหลอก (Noise) ในกรอบ {timeframe}"
                 )
             else:
                 sl_reason = "ตลาดอยู่ในช่วงสภาวะพักตัวหรือยังไม่เข้าเงื่อนไข SMC"
-                rationale = f"ขณะนี้ตลาดยังไม่มี Setup ที่มี Confluence ครบถ้วน (เกณฑ์ ≥{min_confluence}/6) AI แนะนำให้อยู่ในสถานะ WAIT เพื่อรอจังหวะที่ดีที่สุด"
+                rationale = f"ขณะนี้ตลาดยังไม่มี Setup ที่มี Confluence ครบถ้วน (เกณฑ์ ≥{min_confluence}/{total_confluences}) AI แนะนำให้อยู่ในสถานะ WAIT เพื่อรอจังหวะที่ดีที่สุด"
 
-        dec = get_asset_decimals(asset_name)
         return TradeSetup(
             asset=asset_name,
             timeframe=timeframe,
@@ -386,5 +519,6 @@ class TradeSetupGenerator:
             confluence_list=confluences,
             rationale_th=rationale,
             htf_timeframe=htf_timeframe,
-            htf_bias=htf_bias
+            htf_bias=htf_bias,
+            candlestick_pattern=candlestick_pattern
         )

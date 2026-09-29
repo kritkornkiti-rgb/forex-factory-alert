@@ -16,6 +16,7 @@ from src.data_loader import MarketDataLoader
 from src.feature_engineering import FeatureEngineer
 from src.model import AITradingModel
 from src.continuous_learning import ContinuousLearner
+from src.trade_setup import TradeSetup, TradeSetupGenerator
 
 logger = logging.getLogger("AI-bottrade-paper")
 
@@ -35,6 +36,7 @@ class PaperTrader:
         self.config = config or TradingConfig()
         self.data_loader = MarketDataLoader()
         self.feature_engineer = FeatureEngineer()
+        self.trade_setup_gen = TradeSetupGenerator(config=self.config)
         self.continuous_learner = ContinuousLearner(
             asset_name=asset_name,
             timeframe=timeframe,
@@ -47,6 +49,8 @@ class PaperTrader:
         self.cash: float = self.config.initial_balance
         self.open_position: Optional[dict] = None
         self.trade_history: List[dict] = []
+        self.last_sl_timestamp: float = 0.0
+        self.last_sl_direction: Optional[str] = None
         self.load_state()
 
     def load_state(self):
@@ -58,6 +62,8 @@ class PaperTrader:
                     self.cash = state.get("cash", self.config.initial_balance)
                     self.open_position = state.get("open_position")
                     self.trade_history = state.get("trade_history", [])
+                    self.last_sl_timestamp = float(state.get("last_sl_timestamp", 0.0))
+                    self.last_sl_direction = state.get("last_sl_direction", None)
                     logger.info(f"Loaded paper trade state. Cash: ${self.cash:.2f}")
             except Exception as e:
                 logger.error(f"Error loading state: {e}. Using clean state.")
@@ -71,6 +77,8 @@ class PaperTrader:
             "cash": self.cash,
             "open_position": self.open_position,
             "trade_history": self.trade_history,
+            "last_sl_timestamp": self.last_sl_timestamp,
+            "last_sl_direction": self.last_sl_direction,
             "last_updated": datetime.now().isoformat()
         }
         with open(self.state_file, "w") as f:
@@ -81,47 +89,79 @@ class PaperTrader:
         self.cash = self.config.initial_balance
         self.open_position = None
         self.trade_history = []
+        self.last_sl_timestamp = 0.0
+        self.last_sl_direction = None
         self.save_state()
 
-    def step(self) -> dict:
+    def step(
+        self,
+        setup: Optional[TradeSetup] = None,
+        current_price: Optional[float] = None,
+        current_time: Optional[str] = None,
+        current_high: Optional[float] = None,
+        current_low: Optional[float] = None
+    ) -> dict:
         """
         Execute one evaluation step:
-        1. Fetch fresh market data
-        2. Evaluate active position for SL / TP
-        3. Run AI prediction if flat
-        4. Execute action and save state
+        1. Evaluate active position for SL / TP exits (using high/low price wicks)
+        2. If closed on this step, record experience, save state, and stay flat (no immediate re-entry)
+        3. If flat, check for 30-minute SL Cooldown (prevent revenge trading / consecutive loss streaks)
+        4. If flat and confirmed setup exists (status == "ACTIVE_SETUP"):
+           Open position matching the exact setup levels (entry, SL, TP, size)
+        5. Return step execution report
         """
-        if self.model is None or not self.model.is_trained:
+        if setup is None and (self.model is None or not self.model.is_trained):
             return {"status": "error", "message": "Model is not loaded or trained."}
 
-        # 1. Fetch fresh data (bypass cache to get latest candle)
-        df_raw = self.data_loader.fetch_data(
-            asset_name=self.asset_name,
-            timeframe=self.timeframe,
-            limit=300,
-            force_download=True
-        )
+        # 1. If market data not passed in, fetch fresh data and generate features
+        if current_price is None or setup is None:
+            df_raw = self.data_loader.fetch_data(
+                asset_name=self.asset_name,
+                timeframe=self.timeframe,
+                limit=300,
+                force_download=True
+            )
+            df_feat, feature_cols = self.feature_engineer.prepare_features(df_raw, include_target=False)
+            if len(df_feat) == 0:
+                return {"status": "error", "message": "Not enough data to calculate indicators."}
 
-        # 2. Extract features
-        df_feat, feature_cols = self.feature_engineer.prepare_features(df_raw, include_target=False)
-        if len(df_feat) == 0:
-            return {"status": "error", "message": "Not enough data to calculate indicators."}
+            latest_bar = df_feat.iloc[-1]
+            if current_time is None:
+                current_time = str(df_feat.index[-1])
+            if current_price is None:
+                current_price = float(latest_bar['close'])
+            if current_high is None:
+                current_high = float(latest_bar['high'])
+            if current_low is None:
+                current_low = float(latest_bar['low'])
 
-        latest_bar = df_feat.iloc[-1]
-        current_time = str(df_feat.index[-1])
-        current_price = float(latest_bar['close'])
-        current_atr = float(latest_bar['atr']) if 'atr' in latest_bar else current_price * 0.01
+            if setup is None:
+                setup = self.trade_setup_gen.generate_setup(
+                    asset_name=self.asset_name,
+                    timeframe=self.timeframe,
+                    df_features=df_feat,
+                    model=self.model,
+                    capital=self.cash,
+                    risk_pct=self.config.risk_per_trade,
+                    min_confluence=4
+                )
+        else:
+            if current_high is None:
+                current_high = current_price
+            if current_low is None:
+                current_low = current_price
+            if current_time is None:
+                current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
 
         asset_info = SUPPORTED_ASSETS.get(self.asset_name, {})
         fee_rate = asset_info.get("fee_rate", 0.00075)
 
         action_taken = "NONE"
         action_detail = ""
-
-        # 3. Check Open Position for Exit
         closed_trade_data = None
         opened_trade_data = None
 
+        # 2. Check Active Position for Exit (SL or TP)
         if self.open_position is not None:
             pos = self.open_position
             direction = pos.get('direction', 'BUY (LONG)')
@@ -131,26 +171,40 @@ class PaperTrader:
             sl_price = float(pos['sl_price'])
             tp_price = float(pos['tp_price'])
 
+            hit_sl = False
+            hit_tp = False
+            exec_price = current_price
+
             if is_long:
-                hit_sl = current_price <= sl_price
-                hit_tp = current_price >= tp_price
-                gross_pnl = (current_price - entry_price) * size
+                if current_low <= sl_price or current_price <= sl_price:
+                    hit_sl = True
+                    exec_price = sl_price
+                elif current_high >= tp_price or current_price >= tp_price:
+                    hit_tp = True
+                    exec_price = tp_price
+                gross_pnl = (exec_price - entry_price) * size
             else:
-                hit_sl = current_price >= sl_price
-                hit_tp = current_price <= tp_price
-                gross_pnl = (entry_price - current_price) * size
+                if current_high >= sl_price or current_price >= sl_price:
+                    hit_sl = True
+                    exec_price = sl_price
+                elif current_low <= tp_price or current_price <= tp_price:
+                    hit_tp = True
+                    exec_price = tp_price
+                gross_pnl = (entry_price - exec_price) * size
 
             exit_reason = None
             if hit_sl:
                 exit_reason = "STOP_LOSS"
+                self.last_sl_timestamp = datetime.now().timestamp()
+                self.last_sl_direction = direction
             elif hit_tp:
                 exit_reason = "TAKE_PROFIT"
 
             if exit_reason:
-                exit_fee = current_price * size * fee_rate
+                exit_fee = exec_price * size * fee_rate
                 net_pnl = gross_pnl - pos.get('entry_fee', 0.0) - exit_fee
                 if is_long:
-                    self.cash += (current_price * size) - exit_fee
+                    self.cash += (exec_price * size) - exit_fee
                 else:
                     self.cash += (entry_price * size) + net_pnl
 
@@ -172,11 +226,11 @@ class PaperTrader:
                     "entry_time": pos['entry_time'],
                     "exit_time": current_time,
                     "entry_price": entry_price,
-                    "exit_price": current_price,
+                    "exit_price": exec_price,
                     "size": size,
                     "duration_str": duration_str,
                     "net_pnl": round(net_pnl, 2),
-                    "net_pnl_pct": round((net_pnl / (entry_price * size)) * 100, 2),
+                    "net_pnl_pct": round((net_pnl / (entry_price * size + 1e-10)) * 100, 2),
                     "exit_reason": exit_reason,
                     "fee_paid": round(pos.get('entry_fee', 0.0) + exit_fee, 4)
                 }
@@ -188,7 +242,7 @@ class PaperTrader:
                     entry_time=pos['entry_time'],
                     exit_time=current_time,
                     entry_price=entry_price,
-                    exit_price=current_price,
+                    exit_price=exec_price,
                     pnl=net_pnl,
                     pnl_pct=closed_trade['net_pnl_pct'],
                     exit_reason=exit_reason,
@@ -199,58 +253,77 @@ class PaperTrader:
 
                 self.open_position = None
                 action_taken = f"CLOSED_{exit_reason}"
-                p_c_str = format_currency_price(self.asset_name, current_price)
-                action_detail = f"Closed {direction} at {p_c_str} ({duration_str}) | Net PnL: ${net_pnl:.2f} ({closed_trade['net_pnl_pct']}%) | Entry: {pos['entry_time']}"
+                p_c_str = format_currency_price(self.asset_name, exec_price)
+                action_detail = f"Closed {direction} at {p_c_str} ({duration_str}) | Net PnL: ${net_pnl:.2f} ({closed_trade['net_pnl_pct']}%) | Reason: {exit_reason}"
                 self.save_state()
 
-        # 4. If flat, check AI Signal with self-adaptive threshold
-        self.model.confidence_threshold = self.continuous_learner.get_adaptive_confidence_threshold()
-        signal, confidence, prob_dict = self.model.predict_signal(latest_bar)
+        # 3. If flat (and not just closed on this step), check for Setup Entry
+        if self.open_position is None and not action_taken.startswith("CLOSED"):
+            if setup is None:
+                action_taken = "NONE"
+                action_detail = "Flat. Waiting for setup."
+            elif setup.status != "ACTIVE_SETUP":
+                action_taken = "NONE"
+                action_detail = f"Flat. {setup.sl_reason}"
+            else:
+                # Setup is ACTIVE_SETUP! Check 30-minute SL Cooldown to prevent streak losses
+                now_ts = datetime.now().timestamp()
+                is_sl_cooldown = False
+                if self.last_sl_direction and (
+                    ("BUY" in setup.direction and "BUY" in self.last_sl_direction) or
+                    ("SELL" in setup.direction and "SELL" in self.last_sl_direction)
+                ):
+                    elapsed_sl = now_ts - self.last_sl_timestamp
+                    if elapsed_sl < 1800:
+                        is_sl_cooldown = True
+                        rem_m = int((1800 - elapsed_sl) // 60)
+                        rem_s = int((1800 - elapsed_sl) % 60)
+                        action_taken = "SL_COOLDOWN"
+                        action_detail = f"ชะลอการเปิดสถานะ {setup.direction} ซ้ำหลังเพิ่งชน Stop Loss (เหลือระยะพัก {rem_m} นาที {rem_s} วินาที เพื่อป้องกัน Revenge Trading)"
+                        logger.info(f"⏳ [PaperTrader SL Cooldown] {self.asset_name}: {action_detail}")
 
-        if self.open_position is None and signal in [1, -1]:
-            # Sizing based on risk
-            risk_amount = self.cash * self.config.risk_per_trade
-            atr_distance = max(current_atr * self.config.sl_atr_multiplier, current_price * 0.005)
-            size = risk_amount / atr_distance
+                if not is_sl_cooldown:
+                    entry_p = setup.entry_price
+                    size = setup.recommended_size
+                    max_size = (self.cash * 0.95) / (entry_p if entry_p > 0 else 1.0)
+                    if size > max_size:
+                        size = max_size
 
-            # Cap size by available cash
-            max_size = (self.cash * 0.95) / current_price
-            if size > max_size:
-                size = max_size
+                    order_value = size * entry_p
+                    if order_value >= 10.0:
+                        entry_fee = order_value * fee_rate
+                        self.cash -= (order_value + entry_fee)
 
-            order_value = size * current_price
-            if order_value >= 15.0:  # Minimum order value
-                entry_fee = order_value * fee_rate
-                self.cash -= (order_value + entry_fee)
+                        if "BUY" in setup.direction:
+                            pos_dir = "BUY (LONG)"
+                            action_taken = "OPEN_LONG"
+                        else:
+                            pos_dir = "SELL (SHORT)"
+                            action_taken = "OPEN_SHORT"
 
-                if signal == 1:
-                    pos_dir = "BUY (LONG)"
-                    sl_price = current_price - (self.config.sl_atr_multiplier * current_atr)
-                    tp_price = current_price + (self.config.tp_atr_multiplier * current_atr)
-                    action_taken = "OPEN_LONG"
-                else:
-                    pos_dir = "SELL (SHORT)"
-                    sl_price = current_price + (self.config.sl_atr_multiplier * current_atr)
-                    tp_price = current_price - (self.config.tp_atr_multiplier * current_atr)
-                    action_taken = "OPEN_SHORT"
-
-                self.open_position = {
-                    "direction": pos_dir,
-                    "entry_time": current_time,
-                    "entry_price": current_price,
-                    "size": size,
-                    "sl_price": round(sl_price, 5 if "forex" in asset_info.get("category", "") else 2),
-                    "tp_price": round(tp_price, 5 if "forex" in asset_info.get("category", "") else 2),
-                    "entry_fee": entry_fee,
-                    "order_value": order_value,
-                    "confidence": round(confidence, 4),
-                    "smc_structure": int(latest_bar.get('smc_structure', 1)),
-                    "range_position": float(latest_bar.get('range_position', 0.5))
-                }
-                opened_trade_data = self.open_position
-                p_c_str = format_currency_price(self.asset_name, current_price)
-                action_detail = f"{pos_dir} {size:.4f} units at {p_c_str} (Entry Time: {current_time}, Conf: {confidence:.1%})"
-                self.save_state()
+                        self.open_position = {
+                            "direction": pos_dir,
+                            "entry_time": current_time,
+                            "entry_price": entry_p,
+                            "size": size,
+                            "sl_price": setup.stop_loss,
+                            "tp_price": setup.take_profit_1,
+                            "tp2_price": setup.take_profit_2,
+                            "entry_fee": entry_fee,
+                            "order_value": order_value,
+                            "confidence": setup.ai_confidence,
+                            "confluence_score": setup.confluence_score,
+                            "candlestick_pattern": setup.candlestick_pattern,
+                            "rationale": setup.rationale_th
+                        }
+                        opened_trade_data = self.open_position
+                        p_c_str = format_currency_price(self.asset_name, entry_p)
+                        action_detail = (
+                            f"{pos_dir} {size:.4f} units at {p_c_str} "
+                            f"(Entry Time: {current_time}, Conf: {setup.ai_confidence:.1%}, "
+                            f"Confluence: {setup.confluence_score}/{setup.total_confluences})"
+                        )
+                        self.save_state()
 
         # Calculate current total portfolio equity
         unrealized_pnl = 0.0
@@ -260,20 +333,21 @@ class PaperTrader:
             pos_dir = self.open_position.get('direction', 'BUY')
             if "BUY" in pos_dir or "LONG" in pos_dir:
                 unrealized_pnl = (current_price - self.open_position['entry_price']) * self.open_position['size']
+                total_equity = self.cash + pos_value
             else:
                 unrealized_pnl = (self.open_position['entry_price'] - current_price) * self.open_position['size']
-
-        total_equity = self.cash + pos_value
+                total_equity = self.cash + self.open_position.get('order_value', pos_value) + unrealized_pnl
+        else:
+            total_equity = self.cash
 
         return {
             "status": "success",
             "timestamp": current_time,
             "asset": self.asset_name,
             "price": current_price,
-            "ai_signal": "BUY" if signal == 1 else ("SELL" if signal == -1 else "HOLD"),
-            "confidence": round(confidence, 4),
+            "ai_signal": setup.direction if setup else "HOLD",
+            "confidence": setup.ai_confidence if setup else 0.0,
             "adaptive_confidence_threshold": self.continuous_learner.get_adaptive_confidence_threshold(),
-            "probabilities": {k: round(v, 4) for k, v in prob_dict.items()},
             "action_taken": action_taken,
             "action_detail": action_detail,
             "closed_trade_data": closed_trade_data,
