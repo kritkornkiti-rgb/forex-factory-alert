@@ -151,3 +151,48 @@ class TradingConfig:
     tp_atr_multiplier: float = 2.5    # Take-Profit: 2.5 x ATR (Reward:Risk ~ 1.67:1)
     slippage: float = 0.0002          # 0.02% slippage estimation
     confidence_threshold: float = 0.45 # Minimum AI probability to execute a trade
+
+
+def format_price(asset: str, price: float) -> str:
+    """
+    Formats price according to market standards:
+    - JPY pairs (USD/JPY, GBP/JPY, EUR/JPY): 3 decimal places
+    - All other Forex pairs (EUR/USD, GBP/USD, etc.): 5 decimal places
+    - Metals: Gold (2 decimals), Silver (3 decimals)
+    - Crypto: Standard (2 decimals), XRP (4 decimals)
+    """
+    asset_upper = asset.upper()
+
+    # 1. JPY currency pairs -> exactly 3 decimal places
+    if "JPY" in asset_upper:
+        return f"{price:,.3f}"
+
+    # 2. All other Forex currency pairs -> exactly 5 decimal places
+    is_forex = False
+    if any(fx in asset_upper for fx in ["EUR", "GBP", "AUD", "CAD", "CHF", "NZD", "=X"]) or ("USD" in asset_upper and "/" in asset_upper):
+        if not any(m in asset_upper for m in ["GOLD", "SILVER", "PLATINUM", "XAU", "XAG", "XPT", "USDT"]):
+            is_forex = True
+
+    if is_forex:
+        return f"{price:.5f}"
+
+    # 3. Special commodities / crypto
+    if "XRP" in asset_upper:
+        return f"{price:.4f}"
+    if "SILVER" in asset_upper or "XAG" in asset_upper:
+        return f"{price:.3f}"
+
+    return f"{price:,.2f}"
+
+
+def format_currency_price(asset: str, price: float) -> str:
+    """
+    Adds $ for commodities and crypto, while keeping clean 5-digit/3-digit quote numbers for Forex pairs
+    """
+    asset_upper = asset.upper()
+    p_str = format_price(asset, price)
+    is_forex = False
+    if "JPY" in asset_upper or any(fx in asset_upper for fx in ["EUR", "GBP", "AUD", "CAD", "CHF", "NZD"]) or ("USD" in asset_upper and "/" in asset_upper):
+        if not any(m in asset_upper for m in ["GOLD", "SILVER", "PLATINUM", "XAU", "XAG", "XPT", "USDT"]):
+            is_forex = True
+    return p_str if is_forex else f"${p_str}"

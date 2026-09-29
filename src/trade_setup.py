@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from src.config import SUPPORTED_ASSETS, TradingConfig
+from src.config import SUPPORTED_ASSETS, TradingConfig, format_price, format_currency_price
 from src.model import AITradingModel
 
 
@@ -193,7 +193,7 @@ class TradeSetupGenerator:
                 # Ensure structural SL is logically valid (below entry and within 0.8x to 2.5x ATR)
                 if 0.5 * atr < dist_from_entry < 2.5 * default_atr_sl_dist:
                     chosen_sl_dist = dist_from_entry
-                    sl_reason = f"วางใต้ขอบล่าง SMC Swing Low / Order Block (${last_sl_price:,.2f}) + บัฟเฟอร์ความผันผวน 0.15x ATR"
+                    sl_reason = f"วางใต้ขอบล่าง SMC Swing Low / Order Block ({format_currency_price(asset_name, last_sl_price)}) + บัฟเฟอร์ความผันผวน 0.15x ATR"
 
             stop_loss = entry_price - chosen_sl_dist
             sl_distance = chosen_sl_dist
@@ -215,11 +215,15 @@ class TradeSetupGenerator:
             size = risk_dollars / chosen_sl_dist
             pos_value = size * entry_price
 
+            p_entry = format_currency_price(asset_name, entry_price)
+            p_sl = format_currency_price(asset_name, stop_loss)
+            p_tp1 = format_currency_price(asset_name, take_profit_1)
+
             rationale = (
                 f"สัญญาณ BUY เกิดขึ้นเนื่องจากราคาอยู่ในโซน DISCOUNT ({range_pos*100:.1f}%) "
                 f"และโครงสร้างตลาดเป็นขาขึ้น (BULLISH) โดยโมเดล AI ให้ความน่าจะเป็น {prob_dict.get('BUY', 0.0):.1%} "
-                f"แนะนำเปิดสถานะ LONG ที่ราคา ${entry_price:,.2f} โดยมีจุดตัดขาดทุน (SL) ที่ ${stop_loss:,.2f} "
-                f"({sl_reason}) และเป้าหมายทำกำไรหลัก (TP1) ที่ ${take_profit_1:,.2f} (R:R 1:2.0)"
+                f"แนะนำเปิดสถานะ LONG ที่ราคา {p_entry} โดยมีจุดตัดขาดทุน (SL) ที่ {p_sl} "
+                f"({sl_reason}) และเป้าหมายทำกำไรหลัก (TP1) ที่ {p_tp1} (R:R 1:2.0)"
             )
 
         elif is_sell_setup:
@@ -227,12 +231,13 @@ class TradeSetupGenerator:
             status = "ACTIVE_SETUP"
 
             entry_price = current_price
-            entry_zone = (round(current_price * 0.999, 2), round(current_price * 1.002, 2))
+            entry_zone = (round(current_price * 0.999, 5 if "forex" in SUPPORTED_ASSETS.get(asset_name, {}).get("category", "") else 2),
+                          round(current_price * 1.002, 5 if "forex" in SUPPORTED_ASSETS.get(asset_name, {}).get("category", "") else 2))
             entry_type = "MARKET_PREMIUM" if is_premium else "SMC_CONFIRMATION"
 
             default_atr_sl_dist = max(atr * self.config.sl_atr_multiplier, current_price * 0.004)
             chosen_sl_dist = default_atr_sl_dist
-            sl_reason = f"คำนวณตามความผันผวน Dynamic ATR ({self.config.sl_atr_multiplier}x ATR = ${default_atr_sl_dist:.2f})"
+            sl_reason = f"คำนวณตามความผันผวน Dynamic ATR ({self.config.sl_atr_multiplier}x ATR = {format_currency_price(asset_name, default_atr_sl_dist)})"
 
             if not recent_swing_highs.empty:
                 last_sh_price = float(recent_swing_highs['high'].iloc[-1])
@@ -241,7 +246,7 @@ class TradeSetupGenerator:
 
                 if 0.5 * atr < dist_from_entry < 2.5 * default_atr_sl_dist:
                     chosen_sl_dist = dist_from_entry
-                    sl_reason = f"วางเหนือขอบบน SMC Swing High / Order Block (${last_sh_price:,.2f}) + บัฟเฟอร์ความผันผวน 0.15x ATR"
+                    sl_reason = f"วางเหนือขอบบน SMC Swing High / Order Block ({format_currency_price(asset_name, last_sh_price)}) + บัฟเฟอร์ความผันผวน 0.15x ATR"
 
             stop_loss = entry_price + chosen_sl_dist
             sl_distance = chosen_sl_dist
@@ -261,11 +266,15 @@ class TradeSetupGenerator:
             size = risk_dollars / chosen_sl_dist
             pos_value = size * entry_price
 
+            p_entry = format_currency_price(asset_name, entry_price)
+            p_sl = format_currency_price(asset_name, stop_loss)
+            p_tp1 = format_currency_price(asset_name, take_profit_1)
+
             rationale = (
                 f"สัญญาณ SELL เกิดขึ้นเนื่องจากราคาอยู่ในโซน PREMIUM ({range_pos*100:.1f}%) "
                 f"และโครงสร้างตลาดเป็นขาลง (BEARISH) โดยโมเดล AI ให้ความน่าจะเป็น {prob_dict.get('SELL', 0.0):.1%} "
-                f"แนะนำเปิดสถานะ SHORT ที่ราคา ${entry_price:,.2f} โดยมีจุดตัดขาดทุน (SL) ที่ ${stop_loss:,.2f} "
-                f"({sl_reason}) และเป้าหมายทำกำไรหลัก (TP1) ที่ ${take_profit_1:,.2f} (R:R 1:2.0)"
+                f"แนะนำเปิดสถานะ SHORT ที่ราคา {p_entry} โดยมีจุดตัดขาดทุน (SL) ที่ {p_sl} "
+                f"({sl_reason}) และเป้าหมายทำกำไรหลัก (TP1) ที่ {p_tp1} (R:R 1:2.0)"
             )
 
         else:

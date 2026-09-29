@@ -14,7 +14,7 @@ import subprocess
 from typing import Optional
 import requests
 
-from src.config import DATA_DIR
+from src.config import DATA_DIR, format_price, format_currency_price
 from src.trade_setup import TradeSetup
 
 logger = logging.getLogger("AI-bottrade-notifier")
@@ -150,10 +150,15 @@ class AlertNotifier:
         icon = "🟢" if "BUY" in setup.direction else "🔴"
         title = f"{icon} AI bottrade: {setup.direction} Signal ({setup.asset})"
 
+        p_entry = format_currency_price(setup.asset, setup.entry_price)
+        p_sl = format_currency_price(setup.asset, setup.stop_loss)
+        p_tp1 = format_currency_price(setup.asset, setup.take_profit_1)
+        p_tp2 = format_currency_price(setup.asset, setup.take_profit_2)
+
         mac_msg = (
             f"Asset: {setup.asset} ({setup.timeframe})\n"
-            f"Entry: ${setup.entry_price:,.2f} | SL: ${setup.stop_loss:,.2f}\n"
-            f"TP1: ${setup.take_profit_1:,.2f} (1:{setup.tp1_rr:.1f}) | Conf: {setup.ai_confidence:.1%}"
+            f"Entry: {p_entry} | SL: {p_sl}\n"
+            f"TP1: {p_tp1} (1:{setup.tp1_rr:.1f}) | Conf: {setup.ai_confidence:.1%}"
         )
         self.send_macos_notification(title, mac_msg)
 
@@ -165,10 +170,10 @@ class AlertNotifier:
             f"🧠 <b>ความมั่นใจ AI:</b> {setup.ai_confidence:.1%}\n"
             f"🏛️ <b>SMC Confluence:</b> {setup.confluence_score}/{setup.total_confluences}\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
-            f"🎯 <b>ราคาเข้า (Entry):</b> <code>${setup.entry_price:,.2f}</code>\n"
-            f"🛑 <b>Stop Loss (SL):</b> <code>${setup.stop_loss:,.2f}</code> (-{setup.sl_pct:.2f}%)\n"
-            f"🏆 <b>Take Profit 1:</b> <code>${setup.take_profit_1:,.2f}</code> (+{setup.tp1_pct:.2f}%) [R:R 1:{setup.tp1_rr:.1f}]\n"
-            f"🚀 <b>Take Profit 2:</b> <code>${setup.take_profit_2:,.2f}</code> (+{setup.tp2_pct:.2f}%) [R:R 1:{setup.tp2_rr:.1f}]\n"
+            f"🎯 <b>ราคาเข้า (Entry):</b> <code>{p_entry}</code>\n"
+            f"🛑 <b>Stop Loss (SL):</b> <code>{p_sl}</code> (-{setup.sl_pct:.2f}%)\n"
+            f"🏆 <b>Take Profit 1:</b> <code>{p_tp1}</code> (+{setup.tp1_pct:.2f}%) [R:R 1:{setup.tp1_rr:.1f}]\n"
+            f"🚀 <b>Take Profit 2:</b> <code>{p_tp2}</code> (+{setup.tp2_pct:.2f}%) [R:R 1:{setup.tp2_rr:.1f}]\n"
             f"💼 <b>ขนาดไม้แนะนำ:</b> <code>{setup.recommended_size:.4f} units</code> (${setup.position_value:,.2f})\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"💡 <i>{setup.rationale_th}</i>"
@@ -178,10 +183,10 @@ class AlertNotifier:
             f"🚨 **[AI bottrade SIGNAL ALERT]**\n"
             f"**Asset:** {setup.asset} ({setup.timeframe})\n"
             f"**Signal:** {setup.direction} (Confidence: {setup.ai_confidence:.1%})\n"
-            f"🎯 **Entry:** ${setup.entry_price:,.2f}\n"
-            f"🛑 **SL:** ${setup.stop_loss:,.2f} (-{setup.sl_pct:.2f}%)\n"
-            f"🏆 **TP1:** ${setup.take_profit_1:,.2f} (+{setup.tp1_pct:.2f}%)\n"
-            f"🚀 **TP2:** ${setup.take_profit_2:,.2f} (+{setup.tp2_pct:.2f}%)\n"
+            f"🎯 **Entry:** {p_entry}\n"
+            f"🛑 **SL:** {p_sl} (-{setup.sl_pct:.2f}%)\n"
+            f"🏆 **TP1:** {p_tp1} (+{setup.tp1_pct:.2f}%)\n"
+            f"🚀 **TP2:** {p_tp2} (+{setup.tp2_pct:.2f}%)\n"
             f"💼 **Size:** {setup.recommended_size:.4f} units\n"
             f"_{setup.rationale_th}_"
         )
@@ -191,7 +196,7 @@ class AlertNotifier:
         if self.config.get("discord_enabled"):
             self.send_discord(discord_msg)
         if self.config.get("line_enabled"):
-            line_msg = f"\n[AI Signal] {setup.direction} for {setup.asset}\nEntry: ${setup.entry_price:,.2f}\nSL: ${setup.stop_loss:,.2f}\nTP1: ${setup.take_profit_1:,.2f}\nTP2: ${setup.take_profit_2:,.2f}"
+            line_msg = f"\n[AI Signal] {setup.direction} for {setup.asset}\nEntry: {p_entry}\nSL: {p_sl}\nTP1: {p_tp1}\nTP2: {p_tp2}"
             self.send_line(line_msg)
 
     def test_alert(self) -> dict:

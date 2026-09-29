@@ -11,7 +11,7 @@ import time
 from typing import Dict, List, Optional
 import pandas as pd
 
-from src.config import DATA_DIR, MODELS_DIR, SUPPORTED_ASSETS, TradingConfig
+from src.config import DATA_DIR, MODELS_DIR, SUPPORTED_ASSETS, TradingConfig, format_currency_price
 from src.data_loader import MarketDataLoader
 from src.feature_engineering import FeatureEngineer
 from src.model import AITradingModel
@@ -269,7 +269,8 @@ class LiveMarketMonitor:
                                     sig = res['signal']
                                     conf = res['confidence']
                                     score = res.get('confluence_score', '0/6')
-                                    print(f"[{t}] {asset:<18} ({tf:<3}) | Price: ${p:,.2f} | Signal: {sig:<14} ({conf:.1%}) | SMC: {score}")
+                                    p_str = format_currency_price(asset, p)
+                                    print(f"[{t}] {asset:<18} ({tf:<3}) | Price: {p_str:<12} | Signal: {sig:<14} ({conf:.1%}) | SMC: {score}")
                             except Exception as asset_err:
                                 logger.warning(f"Error checking {asset} ({tf}): {asset_err}")
 
