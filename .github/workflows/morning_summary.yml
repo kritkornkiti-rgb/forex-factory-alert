@@ -1,0 +1,32 @@
+name: Forex Daily Morning Summary (08:00 AM)
+
+on:
+  schedule:
+    # ตั้งเวลา 00:50 UTC = 07:50 น. เวลาไทย (หลบช่วงรถติดของ GitHub ตอน :00)
+    - cron: '50 0 * * 1-5'
+    # เผื่อกรณีคิวหน่วง ตั้งสำรองอีกรอบตอน 01:15 UTC = 08:15 น. เวลาไทย
+    - cron: '15 1 * * 1-5'
+
+  workflow_dispatch:
+
+jobs:
+  morning-summary:
+    name: Send Daily Morning Summary
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 🌅 Send Telegram Morning Summary
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python forex_news.py --send-telegram-summary --today

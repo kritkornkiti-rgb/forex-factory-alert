@@ -2,12 +2,9 @@ name: Forex Factory Telegram Alert (24/7)
 
 on:
   schedule:
-    # 1. รันทุก 20 นาที ในวันจันทร์ - ศุกร์ (เวลา UTC)
-    - cron: '*/20 0-23 * * 1-5'
-    # 2. ส่งสรุปข่าวประจำวันรอบเช้าเวลา 08:00 น. ประเทศไทย (01:00 UTC)
-    - cron: '0 1 * * 1-5'
+    # รันทุก 15 นาที ในวันจันทร์ - ศุกร์
+    - cron: '*/15 * * * 1-5'
 
-  # รองรับการกดปุ่ม Run workflow ด้วยตนเองในหน้า GitHub
   workflow_dispatch:
 
 jobs:
@@ -30,4 +27,4 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          python forex_news.py --cron-check --window 25
+          python forex_news.py --cron-check --window 35
