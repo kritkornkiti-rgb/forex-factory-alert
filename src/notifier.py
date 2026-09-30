@@ -6,6 +6,7 @@ Sends real-time trading signals and SL/TP alerts via:
 3. Discord Webhook
 4. LINE Notify
 """
+from datetime import datetime
 import json
 import logging
 import os
@@ -175,6 +176,36 @@ class AlertNotifier:
         self.send_macos_notification(title, mac_msg)
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+        # Format passed confluences checklist item-by-item
+        confluence_lines_tg = []
+        confluence_lines_dc = []
+        for conf in setup.confluence_list:
+            if conf.get("passed"):
+                name = conf.get("name", "")
+                detail = conf.get("detail", "")
+                if "โครงสร้างตลาด" in name:
+                    label = "โครงสร้างตลาด"
+                elif "โซนราคาได้เปรียบ" in name:
+                    label = "โซนราคาได้เปรียบ"
+                elif "โซนสถาบัน" in name:
+                    label = "โซนสถาบัน (OB)"
+                elif "ช่องว่างราคา" in name:
+                    label = "ช่องว่างราคา (FVG)"
+                elif "กวาดสภาพคล่อง" in name:
+                    label = "กวาดสภาพคล่อง (Sweep)"
+                elif "ความมั่นใจของ AI" in name:
+                    label = "ความมั่นใจ AI"
+                elif "แท่งเทียนยืนยัน" in name:
+                    label = "การยืนยันแท่งเทียน"
+                else:
+                    label = name.split("(")[0].strip()
+                confluence_lines_tg.append(f"  ✅ <b>{label}:</b> {detail}")
+                confluence_lines_dc.append(f"  ✅ **{label}:** {detail}")
+
+        confluences_block_tg = "\n".join(confluence_lines_tg) if confluence_lines_tg else "  - ไม่มีข้อมูล"
+        confluences_block_dc = "\n".join(confluence_lines_dc) if confluence_lines_dc else "  - ไม่มีข้อมูล"
+
         telegram_msg = (
             f"🎯 <b>AI bottrade: สัญญาณเทรดใหม่ (TRADE SIGNAL)</b> 🎯\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
@@ -182,17 +213,15 @@ class AlertNotifier:
             f"⚡ <b>คำสั่ง:</b> <b>{setup.direction}</b>\n"
             f"🕐 <b>เวลา:</b> <code>{now_str}</code>\n"
             f"{htf_line_tg}"
-            f"{candle_line_tg}"
-            f"🧠 <b>ความมั่นใจ AI:</b> {setup.ai_confidence:.1%}\n"
-            f"🏛️ <b>SMC Confluence:</b> {setup.confluence_score}/{setup.total_confluences} (เกณฑ์ ≥4/{setup.total_confluences})\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"🏛️ <b>SMC Confluence ผ่านเกณฑ์ ({setup.confluence_score}/{setup.total_confluences} ข้อ):</b>\n"
+            f"{confluences_block_tg}\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"🎯 <b>ราคาเข้า (Entry):</b> <code>{p_entry}</code>\n"
             f"🛑 <b>Stop Loss (SL):</b> <code>{p_sl}</code> (-{setup.sl_pct:.2f}%)\n"
             f"🏆 <b>Take Profit 1:</b> <code>{p_tp1}</code> (+{setup.tp1_pct:.2f}%) [R:R 1:{setup.tp1_rr:.1f}]\n"
             f"🚀 <b>Take Profit 2:</b> <code>{p_tp2}</code> (+{setup.tp2_pct:.2f}%) [R:R 1:{setup.tp2_rr:.1f}]\n"
-            f"💼 <b>ขนาดไม้แนะนำ:</b> <code>{setup.recommended_size:.4f} units</code> (${setup.position_value:,.2f})\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
-            f"💡 <i>{setup.rationale_th}</i>"
+            f"💼 <b>ขนาดไม้แนะนำ:</b> <code>{setup.recommended_size:.4f} units</code> (${setup.position_value:,.2f})"
         )
 
         discord_msg = (
@@ -200,14 +229,13 @@ class AlertNotifier:
             f"**Asset:** {setup.asset} ({setup.timeframe})\n"
             f"**Signal:** {setup.direction} (Confidence: {setup.ai_confidence:.1%})\n"
             f"{htf_line_dc}"
-            f"{candle_line_dc}"
-            f"**SMC Confluence:** {setup.confluence_score}/{setup.total_confluences} (เกณฑ์ ≥4/{setup.total_confluences})\n"
+            f"**SMC Confluence ({setup.confluence_score}/{setup.total_confluences}):**\n"
+            f"{confluences_block_dc}\n"
             f"🎯 **Entry:** {p_entry}\n"
             f"🛑 **SL:** {p_sl} (-{setup.sl_pct:.2f}%)\n"
             f"🏆 **TP1:** {p_tp1} (+{setup.tp1_pct:.2f}%)\n"
             f"🚀 **TP2:** {p_tp2} (+{setup.tp2_pct:.2f}%)\n"
-            f"💼 **Size:** {setup.recommended_size:.4f} units\n"
-            f"_{setup.rationale_th}_"
+            f"💼 **Size:** {setup.recommended_size:.4f} units"
         )
 
         if self.config.get("telegram_enabled"):
