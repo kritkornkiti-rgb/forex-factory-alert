@@ -386,7 +386,7 @@ def render_terminal_table(events, source_info=""):
 # Telegram Message Formatting
 # ==============================================================================
 def format_telegram_event_alert(ev, stage="15m"):
-    """จัดรูปแบบข้อความเตือนข่าวส่งเข้า Telegram แบบ HTML หรูหราและชัดเจน"""
+    """จัดรูปแบบข้อความเตือนข่าวส่งเข้า Telegram แบบกระชับ สะอาดตา"""
     is_high = ev.get("impact") == "High"
     icon = "🔴" if is_high else "🟠"
     impact_name = "กล่องแดง (High Impact)" if is_high else "กล่องส้ม (Medium Impact)"
@@ -401,26 +401,23 @@ def format_telegram_event_alert(ev, stage="15m"):
     lines = [
         f"{icon} {badge}",
         "━━━━━━━━━━━━━━━━━━━━━━",
-        f"📊 <b>ระดับความแรง:</b> {icon} {impact_name}",
-        f"⏰ <b>เวลาประกาศ:</b> <b>{ev['time_bkk_str']}</b> (เวลาไทย UTC+7)",
-        f"📅 <b>วันที่:</b> {ev['date_bkk_str']}",
+        f"⏰ <b>เวลา:</b> <b>{ev['time_bkk_str']}</b> (เวลาไทย UTC+7)",
         f"🌍 <b>สกุลเงิน:</b> {ev['currency_label']}",
         f"📰 <b>ข่าวเศรษฐกิจ:</b> <b>{ev['title']}</b>",
-        f"🎯 <b>ตัวเลขคาดการณ์ (Forecast):</b> <code>{ev.get('forecast', '-')}</code>",
-        f"📦 <b>ตัวเลขก่อนหน้า (Previous):</b> <code>{ev.get('previous', '-')}</code>",
+        f"📊 <b>ระดับความแรง:</b> {icon} {impact_name}",
         "━━━━━━━━━━━━━━━━━━━━━━"
     ]
 
     if is_high:
-        lines.append("⚠️ <b>คำเตือน:</b> <i>ข่าวกล่องแดงกราฟอาจสวิงแรงและ Spread ถ่างสูง แนะนำลดความเสี่ยงหรือหลีกเลี่ยงการเปิดออเดอร์ชนข่าว</i>")
+        lines.append("⚠️ <b>คำเตือน:</b> <i>กราฟอาจสวิงแรงและ Spread ถ่างสูง แนะนำระวังการถือออเดอร์</i>")
     else:
-        lines.append("ℹ️ <b>คำแนะนำ:</b> <i>ข่าวกล่องส้มมีผลกระทบปานกลาง อาจสร้างแรงกระเพื่อมระยะสั้นในคู่เงินที่เกี่ยวข้อง</i>")
+        lines.append("ℹ️ <i>ผลกระทบปานกลาง อาจสร้างแรงกระเพื่อมระยะสั้นในคู่เงินที่เกี่ยวข้อง</i>")
 
     return "\n".join(lines)
 
 
 def format_telegram_summary(events, today_only=True):
-    """สร้างข้อความสรุปข่าวกล่องแดงและกล่องส้มสำหรับส่งเข้า Telegram"""
+    """สร้างข้อความสรุปข่าวกล่องแดงและกล่องส้มแบบกระชับ อ่านง่ายใน Telegram"""
     now_bkk = datetime.now(BANGKOK_TZ)
     if today_only:
         filtered = [e for e in events if e.get("is_today")]
@@ -434,7 +431,7 @@ def format_telegram_summary(events, today_only=True):
 
     lines = [
         title,
-        f"🕒 เวลาปัจจุบัน: {now_bkk.strftime('%H:%M น.')}",
+        f"🕒 อัปเดตล่าสุด: {now_bkk.strftime('%H:%M น.')}",
         "━━━━━━━━━━━━━━━━━━━━━━"
     ]
 
@@ -442,19 +439,17 @@ def format_telegram_summary(events, today_only=True):
     oranges = [e for e in filtered if e.get("impact") == "Medium"]
 
     if reds:
-        lines.append("\n🔴 <b>[กล่องแดง] High Impact (ความผันผวนสูง):</b>")
+        lines.append("\n🔴 <b>[กล่องแดง] High Impact:</b>")
         for ev in reds:
-            lines.append(f"• <b>{ev['time_bkk_str']}</b> {ev['currency_label']} | <b>{ev['title']}</b>")
-            lines.append(f"  └ คาด: <code>{ev['forecast']}</code> | ก่อนหน้า: <code>{ev['previous']}</code> ({ev['countdown']})")
+            lines.append(f"• <b>{ev['time_bkk_str']}</b> {ev['currency_label']} | <b>{ev['title']}</b> ({ev['countdown']})")
 
     if oranges:
-        lines.append("\n🟠 <b>[กล่องส้ม] Medium Impact (ความผันผวนปานกลาง):</b>")
+        lines.append("\n🟠 <b>[กล่องส้ม] Medium Impact:</b>")
         for ev in oranges:
-            lines.append(f"• <b>{ev['time_bkk_str']}</b> {ev['currency_label']} | {ev['title']}")
-            lines.append(f"  └ คาด: <code>{ev['forecast']}</code> | ก่อนหน้า: <code>{ev['previous']}</code> ({ev['countdown']})")
+            lines.append(f"• <b>{ev['time_bkk_str']}</b> {ev['currency_label']} | {ev['title']} ({ev['countdown']})")
 
     lines.append("\n━━━━━━━━━━━━━━━━━━━━━━")
-    lines.append("🔔 <i>ระบบเฝ้าระวังจะแจ้งเตือนล่วงหน้า 15 นาทีก่อนข่าวออกทุกรายการ</i>")
+    lines.append("🔔 <i>ระบบจะแจ้งเตือนล่วงหน้า 15 นาทีก่อนข่าวออกทุกรายการ</i>")
     return "\n".join(lines)
 
 
