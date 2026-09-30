@@ -1,0 +1,16 @@
+[Unit]
+Description=Forex Factory 24/7 News Alert Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/forex-factory-alert
+ExecStart=/usr/bin/python3 -u forex_news.py --monitor
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/forex-news.log
+StandardError=append:/var/log/forex-news-err.log
+
+[Install]
+WantedBy=multi-user.target
