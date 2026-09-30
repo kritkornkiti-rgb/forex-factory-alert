@@ -176,7 +176,7 @@ class AlertNotifier:
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         telegram_msg = (
-            f"⚡ <b>AI bottrade: สัญญาณเปิดออเดอร์ (SIGNAL & ENTRY)</b> ⚡\n"
+            f"🎯 <b>AI bottrade: สัญญาณเทรดใหม่ (TRADE SIGNAL)</b> 🎯\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"📊 <b>สินทรัพย์:</b> {setup.asset} ({setup.timeframe})\n"
             f"⚡ <b>คำสั่ง:</b> <b>{setup.direction}</b>\n"
@@ -220,6 +220,9 @@ class AlertNotifier:
 
     def broadcast_position_closed(self, trade: dict):
         """Formats and broadcasts a rich Position Closed notification with full entry/exit tracking"""
+        # User requested: Do not send paper trade notifications (only signal alerts)
+        if not self.config.get("notify_paper_trade", False):
+            return
         asset = trade.get("asset", "")
         tf = trade.get("timeframe", "")
         direction = trade.get("direction", "BUY (LONG)")
@@ -269,6 +272,9 @@ class AlertNotifier:
 
     def broadcast_position_opened(self, pos: dict, asset: str, tf: str):
         """Formats and broadcasts a detailed Position Opened notification"""
+        # User requested: Do not send paper trade notifications (only signal alerts)
+        if not self.config.get("notify_paper_trade", False):
+            return
         direction = pos.get("direction", "BUY (LONG)")
         entry_time = pos.get("entry_time", "")
         entry_price = pos.get("entry_price", 0.0)
